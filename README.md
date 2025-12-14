@@ -1,4 +1,4 @@
-# DAVE-
+# DAVE+R
 The DAVE+R Framework: A Lifecycle for Secure, Abuse-Resilient Edge Delivery
 
 This repository contains the DAVE+R Framework — a practical way to design, validate, roll out, and continuously improve security controls without breaking production traffic or the business.
