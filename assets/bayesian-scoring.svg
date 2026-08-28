@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 360" width="900" height="360" role="img"
+     aria-label="Bayesian risk scoring: a measured prior is updated by grouped, correlated signals into a calibrated posterior, which maps to graduated mitigations of allow, challenge and block, with an unGated holdout feeding labels back.">
+  <rect width="900" height="360" rx="10" fill="#f8fafc" stroke="#cbd5e1"/>
+  <g font-family="ui-sans-serif,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">
+    <text x="450" y="34" text-anchor="middle" font-size="17" font-weight="700" fill="#0f172a">Module C: calibrated risk scoring</text>
+    <text x="450" y="53" text-anchor="middle" font-size="11.5" fill="#64748b">the prior is measured, not assumed; correlated signals are grouped, not stacked</text>
+
+    <rect x="26" y="86" width="150" height="76" rx="8" fill="#fff" stroke="#0ea5e9" stroke-width="2"/>
+    <text x="101" y="112" text-anchor="middle" font-size="13.5" font-weight="700" fill="#0369a1">Prior</text>
+    <text x="101" y="132" text-anchor="middle" font-size="11" fill="#64748b">measured base rate</text>
+    <text x="101" y="147" text-anchor="middle" font-size="11" fill="#64748b">e.g. 0.1% of logins</text>
+
+    <rect x="26" y="182" width="150" height="132" rx="8" fill="#fff" stroke="#94a3b8"/>
+    <text x="101" y="205" text-anchor="middle" font-size="12.5" font-weight="700" fill="#334155">Signal groups</text>
+    <rect x="38" y="216" width="126" height="28" rx="5" fill="#eff6ff" stroke="#93c5fd"/>
+    <text x="101" y="234" text-anchor="middle" font-size="10.5" fill="#1e40af">automation stack</text>
+    <rect x="38" y="248" width="126" height="28" rx="5" fill="#eff6ff" stroke="#93c5fd"/>
+    <text x="101" y="266" text-anchor="middle" font-size="10.5" fill="#1e40af">network origin</text>
+    <rect x="38" y="280" width="126" height="26" rx="5" fill="#eff6ff" stroke="#93c5fd"/>
+    <text x="101" y="297" text-anchor="middle" font-size="10.5" fill="#1e40af">account history</text>
+
+    <path d="M180 124 h48" stroke="#94a3b8" stroke-width="2" marker-end="url(#c)"/>
+    <path d="M180 248 h30 q18 0 18 -18 v-80" stroke="#94a3b8" stroke-width="2" fill="none" marker-end="url(#c)"/>
+
+    <rect x="232" y="86" width="164" height="130" rx="8" fill="#fff" stroke="#0ea5e9" stroke-width="2"/>
+    <text x="314" y="112" text-anchor="middle" font-size="13.5" font-weight="700" fill="#0369a1">Posterior</text>
+    <text x="314" y="134" text-anchor="middle" font-size="11" fill="#64748b">updated belief</text>
+    <text x="314" y="152" text-anchor="middle" font-size="11" fill="#64748b">calibration measured</text>
+    <text x="314" y="170" text-anchor="middle" font-size="11" fill="#64748b">(Brier / ECE)</text>
+    <text x="314" y="194" text-anchor="middle" font-size="10.5" fill="#0369a1" font-style="italic">score 0.9 means</text>
+    <text x="314" y="207" text-anchor="middle" font-size="10.5" fill="#0369a1" font-style="italic">abusive ~90% of the time</text>
+
+    <path d="M400 150 h44" stroke="#94a3b8" stroke-width="2" marker-end="url(#c)"/>
+
+    <rect x="448" y="86" width="200" height="176" rx="8" fill="#fff" stroke="#94a3b8"/>
+    <text x="548" y="110" text-anchor="middle" font-size="12.5" font-weight="700" fill="#334155">Graduated mitigation</text>
+    <text x="548" y="127" text-anchor="middle" font-size="10" fill="#64748b">cut-points derived from the</text>
+    <text x="548" y="139" text-anchor="middle" font-size="10" fill="#64748b">observed shadow distribution</text>
+    <rect x="462" y="150" width="172" height="30" rx="5" fill="#f0fdf4" stroke="#4ade80"/>
+    <text x="548" y="169" text-anchor="middle" font-size="11" fill="#15803d">low &#8594; allow cleanly</text>
+    <rect x="462" y="186" width="172" height="30" rx="5" fill="#fffbeb" stroke="#fbbf24"/>
+    <text x="548" y="205" text-anchor="middle" font-size="11" fill="#a16207">medium &#8594; step-up challenge</text>
+    <rect x="462" y="222" width="172" height="30" rx="5" fill="#fef2f2" stroke="#f87171"/>
+    <text x="548" y="241" text-anchor="middle" font-size="11" fill="#b91c1c">high &#8594; block at edge</text>
+
+    <rect x="676" y="86" width="196" height="80" rx="8" fill="#fff" stroke="#94a3b8" stroke-dasharray="5 4"/>
+    <text x="774" y="110" text-anchor="middle" font-size="12.5" font-weight="700" fill="#334155">unGated holdout</text>
+    <text x="774" y="130" text-anchor="middle" font-size="10.5" fill="#64748b">small sample never blocked,</text>
+    <text x="774" y="145" text-anchor="middle" font-size="10.5" fill="#64748b">so labels keep arriving</text>
+    <text x="774" y="159" text-anchor="middle" font-size="10.5" fill="#64748b">from what you would have blocked</text>
+
+    <rect x="676" y="182" width="196" height="80" rx="8" fill="#fff" stroke="#94a3b8"/>
+    <text x="774" y="206" text-anchor="middle" font-size="12.5" font-weight="700" fill="#334155">Adverse action</text>
+    <text x="774" y="226" text-anchor="middle" font-size="10.5" fill="#64748b">blocked legitimate users reach</text>
+    <text x="774" y="241" text-anchor="middle" font-size="10.5" fill="#64748b">a named human, with the</text>
+    <text x="774" y="255" text-anchor="middle" font-size="10.5" fill="#64748b">decision evidence retained</text>
+
+    <path d="M652 130 h18" stroke="#94a3b8" stroke-width="2" marker-end="url(#c)"/>
+    <path d="M652 226 h18" stroke="#94a3b8" stroke-width="2" marker-end="url(#c)"/>
+    <path d="M774 170 v6 M774 166 q-330 34 -400 -46" stroke="#94a3b8" stroke-width="1.6" fill="none"
+          stroke-dasharray="5 4" marker-end="url(#c)"/>
+
+    <rect x="26" y="326" width="846" height="0.5" fill="#e2e8f0"/>
+    <text x="450" y="348" text-anchor="middle" font-size="11" fill="#64748b" font-style="italic">
+      At a 0.1% base rate a 95%-accurate signal still yields mostly false positives. Check the volume before enforcing, not after.
+    </text>
+  </g>
+  <defs>
+    <marker id="c" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#94a3b8"/>
+    </marker>
+  </defs>
+</svg>

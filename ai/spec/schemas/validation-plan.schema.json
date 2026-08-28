@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://daver.dev/spec/1.0.0/validation-plan.schema.json",
+  "title": "DAVE+R Validation Plan",
+  "type": "object",
+  "required": ["baseline", "shadow", "tests", "evasion_analysis", "measured", "go_no_go"],
+  "properties": {
+
+    "baseline": {
+      "type": "object",
+      "description": "Added in spec 1.0.0. Measured BEFORE shadow mode starts. Without it you cannot separate your control's false positives from pre-existing failures, and every post-rollout number is unfalsifiable.",
+      "required": ["false_positive_rate", "latency_ms", "measured_before"],
+      "properties": {
+        "false_positive_rate": { "$ref": "common.schema.json#/$defs/value" },
+        "latency_ms": { "$ref": "common.schema.json#/$defs/value" },
+        "error_rate": { "$ref": "common.schema.json#/$defs/value" },
+        "attack_volume": { "$ref": "common.schema.json#/$defs/value" },
+        "measured_before": { "type": "string", "format": "date-time", "description": "Must precede shadow.start." }
+      }
+    },
+
+    "shadow": {
+      "type": "object",
+      "required": ["start", "end", "mode"],
+      "properties": {
+        "start": { "type": "string", "format": "date-time" },
+        "end": { "type": "string", "format": "date-time" },
+        "mode": { "enum": ["log-only", "shadow", "preview", "simulate"] },
+        "duration_days": { "$ref": "common.schema.json#/$defs/value" },
+        "covers_full_weekly_cycle": { "type": "boolean" },
+        "review_cadence": { "type": "string" },
+        "findings": {
+          "type": "array",
+          "items": {
+            "type": "object", "required": ["description", "action"],
+            "properties": {
+              "description": { "type": "string" },
+              "would_have_blocked": { "$ref": "common.schema.json#/$defs/value" },
+              "action": { "enum": ["exception-created", "threshold-adjusted", "control-redesigned", "accepted"] },
+              "exception_id": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+
+    "tests": {
+      "type": "array", "minItems": 4,
+      "description": "Minimum: abuse, safety, bypass, rollback. Adapters may require more.",
+      "items": {
+        "type": "object",
+        "required": ["id", "kind", "method", "expected", "result"],
+        "properties": {
+          "id": { "type": "string" },
+          "kind": { "enum": ["abuse", "safety", "bypass", "rollback", "evasion", "load", "regression"] },
+          "method": { "type": "string" },
+          "expected": { "type": "string" },
+          "result": { "$ref": "common.schema.json#/$defs/value" },
+          "covers_critical_flow": { "type": "string" }
+        }
+      }
+    },
+
+    "evasion_analysis": {
+      "type": "object",
+      "description": "Added in spec 1.0.0. The original Validate stage measured false positives, latency and rollback, but never asked whether the control survives an adversary who adapts. Both published DAVE+R scenarios were then bitten by evasion in Refine that was predictable at design time.",
+      "required": ["bypasses", "reviewed_by"],
+      "properties": {
+        "bypasses": {
+          "type": "array", "minItems": 3,
+          "description": "Name at least three ways to defeat this control. At least one must be tested.",
+          "items": {
+            "type": "object",
+            "required": ["description", "cost_to_attacker", "disposition"],
+            "properties": {
+              "description": { "type": "string" },
+              "cost_to_attacker": { "enum": ["trivial", "low", "moderate", "high"] },
+              "tested": { "type": "boolean" },
+              "test_result": { "$ref": "common.schema.json#/$defs/value" },
+              "disposition": { "enum": ["mitigated", "accepted", "deferred"] },
+              "disposition_rationale": { "type": "string" },
+              "accepted_by": { "$ref": "common.schema.json#/$defs/signature" }
+            }
+          }
+        },
+        "threshold_evasion_margin": {
+          "allOf": [{ "$ref": "common.schema.json#/$defs/value" }],
+          "description": "For threshold controls: how far below the threshold can an attacker operate and still achieve their goal? A small margin means you are on a ratchet treadmill, not a fix, and should escalate control class instead."
+        },
+        "reviewed_by": { "$ref": "common.schema.json#/$defs/human" }
+      }
+    },
+
+    "calibration": {
+      "type": "object",
+      "properties": {
+        "initial_hypothesis": { "type": "string" },
+        "shadow_finding": { "type": "string" },
+        "adjusted_threshold": { "type": "string" },
+        "justified_by_distribution": {
+          "allOf": [{ "$ref": "common.schema.json#/$defs/value" }],
+          "description": "Thresholds must come from the observed shadow distribution, not be picked."
+        }
+      }
+    },
+
+    "measured": {
+      "type": "object",
+      "required": ["false_positive_rate", "latency_delta_ms", "rollback_tested"],
+      "description": "All fields here are read by enforcement-authorizing gates and therefore may not be 'asserted'.",
+      "properties": {
+        "false_positive_rate": { "$ref": "common.schema.json#/$defs/value" },
+        "false_positive_rate_by_critical_flow": { "type": "object", "additionalProperties": { "$ref": "common.schema.json#/$defs/value" } },
+        "latency_delta_ms": { "$ref": "common.schema.json#/$defs/value" },
+        "rollback_tested": { "$ref": "common.schema.json#/$defs/value" },
+        "rollback_actual_seconds": { "$ref": "common.schema.json#/$defs/value" },
+        "true_positive_rate": { "$ref": "common.schema.json#/$defs/value" }
+      }
+    },
+
+    "go_no_go": {
+      "type": "object",
+      "required": ["signature"],
+      "properties": {
+        "signature": { "$ref": "common.schema.json#/$defs/signature" },
+        "support_briefed": { "type": "boolean" },
+        "runbook_published": { "type": "string" }
+      }
+    }
+  }
+}

@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 300" width="900" height="300" role="img"
+     aria-label="Governance flow: a change is proposed, triaged into planned, expedited or emergency, validated, authorized by a named human, deployed and logged, then reviewed on cadence; emergency changes carry a mandatory backfill obligation back into the governed path.">
+  <rect width="900" height="300" rx="10" fill="#f8fafc" stroke="#cbd5e1"/>
+  <g font-family="ui-sans-serif,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">
+    <text x="450" y="34" text-anchor="middle" font-size="17" font-weight="700" fill="#0f172a">Module D: the governed path, and the lane out of it</text>
+    <text x="450" y="53" text-anchor="middle" font-size="11.5" fill="#64748b">an emergency track buys a shorter evidence window, never an exemption from evidence</text>
+
+    <rect x="26" y="94" width="118" height="60" rx="8" fill="#fff" stroke="#94a3b8"/>
+    <text x="85" y="120" text-anchor="middle" font-size="12.5" font-weight="700" fill="#334155">Change</text>
+    <text x="85" y="138" text-anchor="middle" font-size="11" fill="#64748b">proposed</text>
+
+    <path d="M148 124 h26" stroke="#94a3b8" stroke-width="2" marker-end="url(#d)"/>
+
+    <rect x="178" y="94" width="118" height="60" rx="8" fill="#fff" stroke="#0ea5e9" stroke-width="2"/>
+    <text x="237" y="120" text-anchor="middle" font-size="12.5" font-weight="700" fill="#0369a1">Triage</text>
+    <text x="237" y="138" text-anchor="middle" font-size="10.5" fill="#64748b">is harm accruing?</text>
+
+    <path d="M300 112 h34" stroke="#22c55e" stroke-width="2" marker-end="url(#d)"/>
+    <text x="317" y="104" text-anchor="middle" font-size="9.5" fill="#15803d">no</text>
+    <path d="M237 158 v46 h97" stroke="#ef4444" stroke-width="2" fill="none" marker-end="url(#d)"/>
+    <text x="252" y="180" font-size="9.5" fill="#b91c1c">yes, material</text>
+
+    <rect x="338" y="82" width="122" height="60" rx="8" fill="#f0fdf4" stroke="#4ade80" stroke-width="2"/>
+    <text x="399" y="106" text-anchor="middle" font-size="12" font-weight="700" fill="#15803d">Planned</text>
+    <text x="399" y="124" text-anchor="middle" font-size="10.5" fill="#166534">full shadow window</text>
+
+    <rect x="338" y="174" width="122" height="60" rx="8" fill="#fef2f2" stroke="#f87171" stroke-width="2"/>
+    <text x="399" y="198" text-anchor="middle" font-size="12" font-weight="700" fill="#b91c1c">Emergency</text>
+    <text x="399" y="216" text-anchor="middle" font-size="10.5" fill="#7f1d1d">hours, or none</text>
+
+    <path d="M464 112 h34" stroke="#94a3b8" stroke-width="2" marker-end="url(#d)"/>
+    <path d="M464 204 h20 q14 0 14 -14 v-64" stroke="#94a3b8" stroke-width="2" fill="none" marker-end="url(#d)"/>
+
+    <rect x="502" y="82" width="128" height="60" rx="8" fill="#fff" stroke="#0ea5e9" stroke-width="2"/>
+    <text x="566" y="106" text-anchor="middle" font-size="12.5" font-weight="700" fill="#0369a1">Authorize</text>
+    <text x="566" y="124" text-anchor="middle" font-size="10.5" fill="#64748b">named human signs</text>
+
+    <path d="M634 112 h30" stroke="#94a3b8" stroke-width="2" marker-end="url(#d)"/>
+
+    <rect x="668" y="82" width="120" height="60" rx="8" fill="#fff" stroke="#94a3b8"/>
+    <text x="728" y="106" text-anchor="middle" font-size="12.5" font-weight="700" fill="#334155">Deploy</text>
+    <text x="728" y="124" text-anchor="middle" font-size="10.5" fill="#64748b">staged, logged</text>
+
+    <path d="M792 112 h20 q14 0 14 14 v34 q0 14 -14 14 H520" stroke="#94a3b8" stroke-width="2"
+          fill="none" stroke-dasharray="6 4" marker-end="url(#d)"/>
+
+    <rect x="502" y="248" width="286" height="0" fill="none"/>
+    <rect x="356" y="248" width="164" height="0" fill="none"/>
+
+    <path d="M399 234 v22 q0 10 10 10 h120" stroke="#b91c1c" stroke-width="2" fill="none"
+          stroke-dasharray="5 4" marker-end="url(#d)"/>
+    <text x="470" y="262" font-size="10" fill="#b91c1c" font-weight="600">mandatory backfill</text>
+
+    <rect x="536" y="248" width="252" height="36" rx="7" fill="#fff" stroke="#e2e8f0"/>
+    <text x="662" y="264" text-anchor="middle" font-size="11" font-weight="600" fill="#475569">Review on cadence</text>
+    <text x="662" y="277" text-anchor="middle" font-size="10" fill="#64748b">weekly telemetry, monthly exceptions, quarterly architecture</text>
+  </g>
+  <defs>
+    <marker id="d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#94a3b8"/>
+    </marker>
+  </defs>
+</svg>

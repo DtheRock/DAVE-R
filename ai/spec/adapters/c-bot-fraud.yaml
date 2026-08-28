@@ -1,0 +1,184 @@
+id: c-bot-fraud
+name: Module C - Bot and Fraud Defense (Bayesian Extension)
+purpose: >
+  Maintain an evolving belief about abuse likelihood and update it as evidence
+  accumulates, mapping a calibrated posterior to graduated mitigations.
+
+planes: [edge, bot-management, identity, application]
+
+telemetry_systems: [datadog, splunk, snowflake, bigquery, elastic, kafka]
+
+min_shadow_days:
+  planned: 14
+  expedited: 5
+  emergency: 1
+backfill_window_days: 10
+
+signal_vocabulary:
+  - device_attestation_present
+  - headless_browser_indicator
+  - impossible_travel_velocity
+  - credential_reuse_across_accounts
+  - session_entropy
+  - emulator_profile
+  - behavioural_biometrics
+  - account_age
+  - historical_chargeback
+  - datacenter_asn
+  - residential_proxy_indicator
+
+correlated_signal_groups:
+  description: >
+    Signals inside a group travel together and must not be treated as independent
+    evidence. This is the single most common way a risk score becomes overconfident.
+  groups:
+    - name: automation-stack
+      members: [headless_browser_indicator, session_entropy, device_attestation_present, emulator_profile]
+    - name: network-origin
+      members: [datacenter_asn, residential_proxy_indicator]
+    - name: account-history
+      members: [account_age, historical_chargeback, credential_reuse_across_accounts]
+
+discovery:
+  sources:
+    - kind: api
+      system: bot-management
+      calls: [get_score_distribution, list_signals, get_challenge_rates, get_solve_rates]
+      extracts: [current_score_distribution, live_thresholds, challenge_volume]
+    - kind: warehouse
+      extracts: [label_history, confirmed_ato_rate, chargeback_rate, base_rate]
+    - kind: repo
+      globs: ["**/risk*/**", "**/fraud*/**", "**/scoring*/**"]
+      extracts: [signal_weights, threshold_config, model_version]
+  infers:
+    - module.base_rate
+    - module.score_distribution
+    - definition_brief.success_metrics[].baseline
+  must_ask_human:
+    - definition_brief.guardrails.false_positive_tolerance
+    - acceptable challenge rate for legitimate users
+    - definition_brief.raci.accountable
+    - who handles appeals from wrongly blocked users
+
+gates:
+  - id: C-C1
+    name: base-rate-declared
+    severity: blocking
+    requires_evidence: true
+    added_in: 1.0.0
+    rationale: >
+      The single most important thing to tell a team building risk scores. If 0.1 percent of
+      logins are account takeover, a signal that is 95 percent accurate still produces mostly
+      false positives. Module C described posterior updating without ever requiring the prior,
+      which is the base rate fallacy waiting to happen at production scale.
+    assert:
+      all:
+        - provenance_in: [module.base_rate, [observed, derived]]
+        - gt: [module.base_rate, 0]
+    remediation: >
+      Measure the actual prevalence of the abuse in your traffic before choosing thresholds.
+      Derive the expected false positive volume at your candidate threshold and check it
+      against the guardrail.
+
+  - id: C-C2
+    name: signal-independence-assessed
+    severity: blocking
+    added_in: 1.0.0
+    rationale: >
+      Naive Bayes assumes conditional independence. Bot signals violate it badly: headless
+      user agent, missing attestation, datacenter ASN and absent cookie almost always travel
+      together. Multiplying their likelihood ratios produces wildly overconfident scores,
+      which is the direct cause of the false positive blowups this framework exists to prevent.
+    assert:
+      all:
+        - exists: module.independence_assessment
+        - each:
+            in: module.signals
+            satisfies:
+              any:
+                - exists: item.correlation_group
+                - eq: [item.independence_justified, true]
+    remediation: >
+      Assign each signal to a correlation group or justify treating it as independent.
+      Down-weight or combine within-group signals rather than summing them.
+
+  - id: C-C3
+    name: calibration-measured-with-named-metric
+    severity: blocking
+    requires_evidence: true
+    added_in: 1.0.0
+    rationale: >
+      The framework says "calibrate" repeatedly but never defines what calibrated means or
+      how you would know. A score is calibrated when items scored 0.9 are abusive 90 percent
+      of the time. That is measurable; assert it with a number.
+    assert:
+      all:
+        - in: [module.calibration.metric, [brier, log-loss, ece, reliability-curve]]
+        - provenance_in: [module.calibration.score, [observed, derived]]
+    remediation: Report a Brier score, expected calibration error, or reliability curve from shadow data.
+
+  - id: C-C4
+    name: thresholds-derived-from-distribution
+    severity: blocking
+    added_in: 1.0.0
+    rationale: >
+      Bands like "under 50 allow, 50 to 89 challenge, over 90 block" appear in the published
+      scenario with no derivation. Thresholds picked rather than derived encode someone's
+      intuition about a distribution they have not looked at.
+    assert:
+      all:
+        - provenance_in: [module.score_distribution, [observed, derived]]
+        - provenance_in: [validation_plan.calibration.justified_by_distribution, [observed, derived]]
+    remediation: Choose each threshold from the observed shadow score distribution and record the percentile it sits at.
+
+  - id: C-C5
+    name: adverse-action-path-exists
+    severity: blocking
+    added_in: 1.0.0
+    rationale: >
+      Some legitimate users will be blocked; the guardrail is a budget, not zero. They need a
+      route back. Beyond the obvious UX harm, automated decisions with legal or significant
+      effect on EU data subjects carry obligations under GDPR Article 22 including a right to
+      human review, and the original module was silent on this.
+    assert:
+      all:
+        - exists: module.adverse_action.appeal_path
+        - exists: module.adverse_action.human_review_owner
+        - exists: module.adverse_action.decision_evidence_retained
+    remediation: >
+      Define how a blocked legitimate user reaches a human, who that human is, and what
+      evidence about the decision is retained so the review can be meaningful.
+
+  - id: C-C6
+    name: feedback-loop-not-self-confirming
+    severity: blocking
+    added_in: 1.0.0
+    rationale: >
+      The model trains on outcomes the model itself gated. Blocked traffic generates no
+      labels, so the model becomes progressively more confident about a world it created.
+      An unGated holdout is the standard defence and it must be deliberate.
+    assert:
+      all:
+        - exists: module.holdout.strategy
+        - gt: [module.holdout.fraction, 0]
+    remediation: >
+      Hold out a small unGated or challenge-only sample so you keep observing what the
+      model would have blocked, and use it to detect drift.
+
+  - id: C-C7
+    name: decisions-explainable
+    severity: blocking
+    rationale: >
+      The module's own rule, record the strongest evidence factors for each action.
+      Without it, appeals and incident review are both impossible.
+    assert:
+      eq: [module.explainability.top_factors_recorded, true]
+    remediation: Record the strongest contributing signals alongside every enforcement decision.
+
+  - id: C-C8
+    name: recalibrate-on-traffic-shift
+    severity: advisory
+    rationale: Seasonality, launches and campaigns change the traffic mix, and a threshold calibrated in October is wrong on Black Friday.
+    assert:
+      exists: module.recalibration_triggers
+    remediation: Define the events that force recalibration, not just a fixed schedule.

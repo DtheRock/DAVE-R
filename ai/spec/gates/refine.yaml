@@ -1,0 +1,110 @@
+stage: refine
+description: >
+  Use production evidence to harden and simplify. The framework claims the system
+  gets simpler over time; these gates are what make that claim checkable rather
+  than aspirational.
+
+gates:
+  - id: R-1
+    name: refinements-are-evidence-backed
+    severity: blocking
+    requires_evidence: true
+    rationale: >
+      "Measurable outcomes over vibes" applied to the stage most prone to vibes. A tuning
+      change with no cited observation is someone's hunch entering production.
+    assert:
+      each:
+        in: refinement_log.entries
+        satisfies:
+          all:
+            - provenance_in: [item.evidence, [observed, derived]]
+            - exists: item.impact
+    remediation: Cite the observation that motivated each refinement, from a named source, and record the impact after.
+
+  - id: R-2
+    name: no-expired-unactioned-exceptions
+    severity: blocking
+    added_in: 1.0.0
+    rationale: >
+      The register exists to prevent permanent exceptions. Without an expiry sweep it becomes
+      the thing that documents them instead. This is the check an agent should run on a
+      schedule, unprompted, forever.
+    assert:
+      each:
+        in: exception_register.exceptions
+        satisfies:
+          any:
+            - gte: [item.expiry, "$now"]
+            - in: [item.status, [retired, expired]]
+    remediation: >
+      Every exception past its expiry must be retired, or explicitly re-approved with a new
+      expiry and a fresh signature. Silence is not renewal.
+
+  - id: R-3
+    name: complexity-trend-recorded
+    severity: blocking
+    added_in: 1.0.0
+    rationale: >
+      "The system becomes simpler and/or stronger over time" was an exit criterion with no
+      measurement. Counting is cheap and makes the claim falsifiable.
+    assert:
+      all:
+        - provenance_in: [refinement_log.complexity_trend.control_count, [observed, derived]]
+        - provenance_in: [refinement_log.complexity_trend.exception_count, [observed, derived]]
+        - exists: refinement_log.complexity_trend.mean_exception_age_days
+    remediation: Record control count, exception count and mean exception age each review cycle.
+
+  - id: R-4
+    name: evasion-drift-rechecked
+    severity: blocking
+    added_in: 1.0.0
+    rationale: >
+      Adversaries adapt between cycles. Re-running the evasion analysis on cadence is what
+      turns Refine from cleanup into defence.
+    assert:
+      all:
+        - exists: refinement_log.drift_check.last_run
+        - gte: [refinement_log.drift_check.last_run, "$now-90d"]
+    remediation: Re-run the evasion analysis at least quarterly and record the date.
+
+  - id: R-5
+    name: escalate-rather-than-ratchet
+    severity: blocking
+    added_in: 1.0.0
+    rationale: >
+      Three adjustments to the same threshold is the signature of a losing control class.
+      The published scraping scenario presents ratcheting 300 to 200 as a success; it is a
+      treadmill, and teaching it as a win teaches the wrong lesson.
+    assert:
+      implies:
+        - gte: [refinement_log.drift_check.threshold_adjustments_count, 3]
+        - eq: [refinement_log.drift_check.escalation_recommended, true]
+    remediation: >
+      After three tunes of the same threshold, stop tuning. Escalate control class:
+      authentication, per-key quota, cost-based challenge, or a different plane entirely.
+
+  - id: R-6
+    name: version-bumped
+    severity: blocking
+    rationale: >
+      The framework mandates semver and says changes should be intentional and documented.
+      A cycle that changed production without a version bump is exactly the drift the
+      framework warns about, applied to itself.
+    assert:
+      each:
+        in: refinement_log.entries
+        satisfies: { matches: [item.version, "^v[0-9]+\\.[0-9]+\\.[0-9]+$"] }
+    remediation: Bump the version and record the change against it.
+
+  - id: R-7
+    name: dead-controls-retired
+    severity: advisory
+    rationale: Rule bloat is a maintainability tax and an incident risk. Controls and exceptions with zero observed usage should be candidates for removal.
+    assert:
+      each:
+        in: exception_register.exceptions
+        satisfies:
+          implies:
+            - eq: [item.usage, 0]
+            - in: [item.status, [retired, expired]]
+    remediation: An exception with no observed usage is dead weight. Retire it.

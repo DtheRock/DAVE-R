@@ -1,0 +1,17 @@
+{
+  "$schema": "https://daver.dev/manifest/1.json",
+  "framework": "DAVE+R",
+  "framework_version": "1.1.0",
+  "spec_version": "1.1.0",
+  "author": "Demetrios Petropoulos",
+  "license": "CC-BY-4.0",
+  "spec_root": "ai/spec",
+  "engine": "ai/engine/daver_cli.py",
+  "mcp_server": "ai/mcp/server.py",
+  "skill": "ai/skills/dave-r",
+  "evals": "ai/evals",
+  "default_profile": "baseline",
+  "profiles": ["baseline", "agent-operated", "regulated"],
+  "adapters": ["a-edge-waf", "b-cloud-posture", "c-bot-fraud", "d-governance-delivery"],
+  "stages": ["define", "architect", "validate", "execute", "refine"]
+}

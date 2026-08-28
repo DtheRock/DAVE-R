@@ -1,4 +1,10 @@
-📖 DAVE+R In Action: Defeating Credential Stuffing Without Killing Conversion
+# 📖 DAVE+R In Action: Defeating Credential Stuffing Without Killing Conversion
+
+**Module C (Bot and Fraud Defense, Bayesian Extension).** Written against framework v1.0.0,
+and reproduced here exactly as published.
+
+---
+
 The Scenario:
 GlobalRetail Corp is facing a massive "credential stuffing" Account Takeover (ATO) attack on their /api/v2/login endpoint just weeks before a major holiday sale. Attackers are using millions of rotating residential proxies to test stolen passwords, successfully draining customer loyalty accounts.
 
@@ -51,3 +57,59 @@ The Pivot: Two weeks later, attackers realize they are blocked and switch to a "
 The Tuning: During a routine telemetry review, the team spots the drift. They don't panic or rewrite the system. They simply add a new signal (Emulator Screen Resolution Profiling) to the Bayesian risk engine, log the tweak in the Refinement Log, and seamlessly push v1.1.
 
 Retiring Debt: Six months later, the aggregator exception in the register expires. Because it was tracked and governed, the team successfully migrates the aggregator to secure OAuth API keys and deletes the legacy IP exception, making the system simpler and more secure than before.
+
+---
+
+## What it cost
+
+*Added in v1.1.0.*
+
+- **Seven days of continued account takeovers** while shadow mode ran. Customer loyalty
+  balances were being drained throughout. Protecting conversion was a defensible priority,
+  but the cost was real and nobody wrote it down.
+- Two weeks later, a successful adversary pivot that required a further engineering cycle.
+- Six months of an ASN-scoped bypass, plus the commercial work to migrate the aggregator
+  to OAuth.
+- A cross-functional negotiation between Security and E-Commerce that only worked because
+  someone senior forced both into the same document.
+
+## What v1.0.0 did not ask for
+
+Replayed through the v1.1.0 gates, this cycle clears 16 of 45 gates. Seven of
+the eight Module C gates block, which is why v1.1.0 rewrote that module's statistical
+requirements.
+
+- **No triage decision.** Accounts were being drained for seven days by default. With the
+  daily loss quantified, the team might still have chosen the same window, or might have
+  enforced the top risk band immediately while calibrating the rest. v1.0.0 offered no way
+  to have that conversation.
+- **The prior is never stated.** The whole module is posterior updating, and the base rate
+  of ATO in the login population appears nowhere. At a 0.1% base rate, a 95%-accurate
+  signal still produces overwhelmingly more false positives than true ones. That arithmetic
+  decides whether the thresholds are safe, and it was never done.
+- **Correlated signals treated as independent.** Missing app attestation, headless
+  user-agent and emulator profile almost always travel together. Combining them as
+  independent evidence produces a score far more confident than the data supports, which is
+  precisely the mechanism that generates the false positive blowups the cycle was trying to
+  avoid.
+- **"Calibrate" is never defined or measured.** The word appears repeatedly. No Brier score,
+  no reliability curve, no expected calibration error. A score is calibrated when sessions
+  scored 0.9 are abusive about 90% of the time, and that is a number you can report.
+- **Thresholds picked, not derived.** 50 and 90 arrive with no explanation of what
+  percentile of the observed distribution they sit at.
+- **No adverse action path.** Users blocked at score > 90 have no described route to a
+  human. With a 0.1% false positive budget on a login endpoint at retail scale, that is a
+  large number of real customers locked out with nowhere to go, and in several jurisdictions
+  it carries review obligations besides.
+- **No holdout.** The model trains on outcomes the model gated. Blocked traffic generates no
+  labels, so confidence rises about a world the model created. The emulator pivot was found
+  by a human noticing drift; a holdout would have surfaced it sooner.
+- **No evasion analysis.** Spoofing a missing app token was foreseeable. It was found in
+  production, two weeks after enforcement.
+- **The exception is ASN-scoped.** An ASN can cover thousands of unrelated hosts on shared
+  cloud ranges. Nothing in the scenario acknowledges the breadth of what was trusted, and
+  there is no compensating control.
+
+To be clear about what went right: the shadow window caught the aggregator, the graduated
+response was the correct architecture, and the exception was actually retired on schedule
+with the underlying integration fixed. That last part is rarer than it should be.

@@ -1,0 +1,783 @@
+spec_version: 1.0.0
+cycle_id: acme-pricing-scraper-v2
+adapter: a-edge-waf
+stage: refine
+definition_brief:
+  name: Protect live pricing API from automated scraping
+  date: '2026-06-01'
+  status: active
+  asset:
+    target: api.acme.example/v2/pricing/live
+    traffic_scope: Global edge traffic, unauthenticated and partner-authenticated
+    critical_flows:
+    - id: partner-pricing-pull
+      description: Top 5 enterprise partners pulling live pricing via signed requests
+      business_impact_if_broken: SLA breach across 5 contracts, ~$40k/day credits
+    - id: web-pricing-page
+      description: Public pricing page fetching live rates for anonymous visitors
+      business_impact_if_broken: Pricing page shows stale rates, direct conversion loss
+  threat_scenarios:
+  - id: THR-001
+    behaviour: Distributed AI crawlers pulling the full price book on a short interval
+    observable_signature: 'Unauthenticated clients sustaining >5 req/s with near-uniform inter-arrival
+      timing, no Referer, datacenter ASN, and full-catalogue path coverage within an hour. Visible as
+      origin DB CPU above 80% and a rising 503 rate.
+
+      '
+    active_now:
+      value: true
+      provenance: observed
+      observed_at: '2026-06-01T09:00:00Z'
+      source:
+        system: datadog
+        ref: sum:origin.db.cpu{service:pricing}
+        window: 7d
+    observed_harm:
+      value: Intermittent 503s to enterprise partners
+      provenance: observed
+      observed_at: '2026-06-01T09:00:00Z'
+      source:
+        system: datadog
+        ref: sum:http.503{path:/v2/pricing/live}
+        window: 7d
+  - id: THR-002
+    behaviour: Competitor price monitoring pulling faster than contractual limits
+    observable_signature: Authenticated partner keys exceeding contracted 10 req/s, sustained
+    active_now:
+      value: false
+      provenance: observed
+      observed_at: '2026-06-01T09:00:00Z'
+      source:
+        system: datadog
+        ref: sum:api.rate{partner:*}
+        window: 30d
+  guardrails:
+    false_positive_tolerance:
+      value: 0.001
+      provenance: asserted
+      asserted_by: j.okonkwo@acme.example
+      asserted_at: '2026-06-01T10:00:00Z'
+    latency_budget_ms:
+      value: 15
+      provenance: asserted
+      asserted_by: j.okonkwo@acme.example
+      asserted_at: '2026-06-01T10:00:00Z'
+    percentile: p95
+    business_guardrails:
+    - statement: No enterprise partner may be hard-blocked at any point
+      measured_by:
+        system: datadog
+        ref: sum:waf.block{partner:*}
+  success_metrics:
+  - id: SM-1
+    statement: Reduce unauthenticated scraping volume on the pricing endpoint by 80%
+    baseline:
+      value: 4200000
+      unit: requests_per_day
+      provenance: observed
+      observed_at: '2026-05-25T00:00:00Z'
+      source:
+        system: datadog
+        ref: sum:http.requests{path:/v2/pricing/live,auth:none}
+        window: 14d
+    target:
+      value: 840000
+      unit: requests_per_day
+      provenance: asserted
+      asserted_by: j.okonkwo@acme.example
+    measured_by:
+      system: datadog
+      ref: sum:http.requests{path:/v2/pricing/live,auth:none}
+  - id: SM-2
+    statement: Origin DB CPU p95 below 60%
+    baseline:
+      value: 0.87
+      provenance: observed
+      observed_at: '2026-05-25T00:00:00Z'
+      source:
+        system: datadog
+        ref: p95:origin.db.cpu{service:pricing}
+        window: 14d
+    target:
+      value: 0.6
+      provenance: asserted
+      asserted_by: j.okonkwo@acme.example
+    measured_by:
+      system: datadog
+      ref: p95:origin.db.cpu{service:pricing}
+  non_goals:
+  - Not attempting to stop manual browsing or copy-paste by humans
+  - Not addressing scraping of the static marketing site in this cycle
+  triage:
+    track: expedited
+    justification:
+      value: 503s are reaching paying partners daily, but the endpoint is not losing money fast enough
+        to justify enforcing blind.
+      provenance: asserted
+      asserted_by: j.okonkwo@acme.example
+      asserted_at: '2026-06-01T10:00:00Z'
+    harm_accruing:
+      value: true
+      provenance: observed
+      observed_at: '2026-06-01T09:00:00Z'
+      source:
+        system: datadog
+        ref: sum:http.503{path:/v2/pricing/live}
+        window: 24h
+    harm_rate:
+      value: 6500
+      unit: usd_per_day
+      provenance: derived
+      derived_from:
+      - definition_brief.threat_scenarios[0].observed_harm
+      method: SLA credit exposure per 503-affected partner-hour x observed affected hours
+    accepted_by:
+      decision: approved
+      by:
+        name: Joy Okonkwo
+        identity: j.okonkwo@acme.example
+        role: Director of Platform Security
+      at: '2026-06-01T10:30:00Z'
+      rationale: Two-day shadow window accepted; harm rate does not justify enforcing without evidence.
+      authored_by_agent: false
+  alternatives_considered:
+  - option: Cache /v2/pricing/live at edge with a 30s TTL
+    plane: edge
+    addresses_root_cause: true
+    rejected_because: 'Partners contractually require sub-5s price freshness. A 30s TTL breaches three
+      contracts. Kept as a fallback if enforcement proves too costly.
+
+      '
+  - option: Require authentication on the endpoint
+    plane: identity
+    addresses_root_cause: true
+    rejected_because: 'Public pricing page depends on unauthenticated access. Would require a rearchitecture
+      of the web tier, tracked separately as PLAT-4412.
+
+      '
+  - option: Per-key quota at the API gateway
+    plane: application
+    addresses_root_cause: true
+    rejected_because: 'Only covers authenticated partner traffic, which is not the abusive population.
+      Adopted anyway for THR-002 as control API-QT-01.
+
+      '
+  raci:
+    accountable:
+      name: Joy Okonkwo
+      identity: j.okonkwo@acme.example
+      role: Director of Platform Security
+    responsible:
+    - name: Marco Silva
+      identity: m.silva@acme.example
+      role: Edge Engineer
+    consulted:
+    - Partner Integration
+    - Web Platform
+    informed:
+    - Customer Support
+    - NOC
+    escalation_path: '#sec-edge-oncall / PagerDuty service EDGE-P1'
+control_matrix:
+  system: Edge WAF, pricing endpoint
+  last_updated: '2026-06-08'
+  trust_boundary:
+    zones:
+    - internet
+    - edge
+    - api-gateway
+    - origin
+    - pricing-db
+    flows:
+    - from: internet
+      to: edge
+      authenticated: false
+      data_sensitivity: internal
+    - from: edge
+      to: api-gateway
+      authenticated: false
+      data_sensitivity: internal
+    - from: api-gateway
+      to: origin
+      authenticated: true
+      data_sensitivity: internal
+    - from: origin
+      to: pricing-db
+      authenticated: true
+      data_sensitivity: confidential
+    diagram: assets/pricing-trust-boundary.svg
+  controls:
+  - id: WAF-RL-01
+    intent: Cap unauthenticated requests to the live pricing endpoint
+    plane: waf
+    owner:
+      name: Marco Silva
+      identity: m.silva@acme.example
+    addresses:
+    - THR-001
+    enforcement_mode: graduated
+    parameters:
+      limit_per_minute: 200
+      action_at_limit: managed-challenge
+      action_at_2x: block
+    telemetry:
+      source:
+        system: datadog
+        ref: dashboard/waf-pricing-01
+        window: 7d
+      metrics:
+      - blocked_requests
+      - challenged_requests
+      - challenge_solve_rate
+      - origin_cpu
+      - p95_latency
+      alert_routing: 'PagerDuty EDGE-P1, Slack #sec-edge'
+    rollback:
+      procedure: 'Terraform var waf_pricing_mode: block -> challenge -> log. Per-stage, no global toggle.'
+      granularity: graduated
+      target_seconds: 90
+      degraded_posture: 'Origin retains the API-QT-01 per-key quota and a 60s emergency edge cache that
+        engages automatically when origin DB CPU exceeds 90%. Scraping resumes but the origin does not
+        fall over.
+
+        '
+      tested:
+        value: true
+        provenance: observed
+        observed_at: '2026-06-05T14:00:00Z'
+        source:
+          system: github
+          ref: actions/runs/88412 rollback-drill
+  - id: API-QT-01
+    intent: Enforce contracted per-partner rate ceiling
+    plane: application
+    owner:
+      name: Marco Silva
+      identity: m.silva@acme.example
+    addresses:
+    - THR-002
+    enforcement_mode: block
+    parameters:
+      per_key_rps: 10
+    telemetry:
+      source:
+        system: datadog
+        ref: dashboard/api-quota-01
+        window: 7d
+      metrics:
+      - quota_rejections
+      - partner_rps
+      alert_routing: 'Slack #partner-integrations'
+    rollback:
+      procedure: Set quota enforcement flag to false per partner key
+      granularity: rule
+      target_seconds: 30
+      degraded_posture: Contractual limits unenforced; overage billed retroactively per contract clause
+        7.3.
+      tested:
+        value: true
+        provenance: observed
+        observed_at: '2026-06-05T14:30:00Z'
+        source:
+          system: github
+          ref: actions/runs/88413 quota-rollback-drill
+  policy_tiers:
+    baseline:
+    - WAF-RL-01
+    overlays:
+    - name: partner-signed
+      applies_to: Requests carrying a valid partner signature
+      controls:
+      - API-QT-01
+validation_plan:
+  baseline:
+    false_positive_rate:
+      value: 0.0004
+      provenance: observed
+      observed_at: '2026-06-01T12:00:00Z'
+      source:
+        system: datadog
+        ref: sum:waf.fp{path:/v2/pricing/live}/sum:http.requests{path:/v2/pricing/live}
+        window: 14d
+    latency_ms:
+      value: 42
+      provenance: observed
+      observed_at: '2026-06-01T12:00:00Z'
+      source:
+        system: datadog
+        ref: p95:edge.latency{path:/v2/pricing/live}
+        window: 14d
+    error_rate:
+      value: 0.021
+      provenance: observed
+      observed_at: '2026-06-01T12:00:00Z'
+      source:
+        system: datadog
+        ref: sum:http.5xx{path:/v2/pricing/live}
+        window: 14d
+    attack_volume:
+      value: 4200000
+      provenance: observed
+      observed_at: '2026-06-01T12:00:00Z'
+      source:
+        system: datadog
+        ref: sum:http.requests{path:/v2/pricing/live,auth:none}
+        window: 14d
+    measured_before: '2026-06-01T12:00:00Z'
+  shadow:
+    start: '2026-06-02T00:00:00Z'
+    end: '2026-06-04T00:00:00Z'
+    mode: log-only
+    duration_days:
+      value: 2
+      provenance: observed
+      observed_at: '2026-06-04T00:00:00Z'
+      source:
+        system: datadog
+        ref: dashboard/waf-pricing-01
+        window: 2d
+    covers_full_weekly_cycle: false
+    review_cadence: Twice daily during the expedited window
+    findings:
+    - description: BetaCorp integration not sending partner signature header after their May migration
+      would_have_blocked:
+        value: true
+        provenance: observed
+        observed_at: '2026-06-03T08:00:00Z'
+        source:
+          system: datadog
+          ref: dashboard/waf-pricing-01 filter:betacorp
+          window: 2d
+      action: exception-created
+      exception_id: EXC-001
+  tests:
+  - id: T1
+    kind: abuse
+    method: Replay captured crawler traffic at 400 req/min from an isolated test ASN
+    expected: Challenge at 200/min, block at 400/min
+    result:
+      value: pass
+      provenance: observed
+      observed_at: '2026-06-03T10:00:00Z'
+      source:
+        system: github
+        ref: actions/runs/88390
+  - id: T2
+    kind: safety
+    method: Signed partner request flow, all 5 partners, production-like load
+    expected: Passes cleanly, no challenge
+    covers_critical_flow: partner-pricing-pull
+    result:
+      value: pass
+      provenance: observed
+      observed_at: '2026-06-03T11:00:00Z'
+      source:
+        system: github
+        ref: actions/runs/88391
+  - id: T3
+    kind: safety
+    method: Anonymous pricing page load, 500 concurrent sessions from residential proxies
+    expected: Passes cleanly under the per-minute cap
+    covers_critical_flow: web-pricing-page
+    result:
+      value: pass
+      provenance: observed
+      observed_at: '2026-06-03T11:30:00Z'
+      source:
+        system: github
+        ref: actions/runs/88392
+  - id: T4
+    kind: bypass
+    method: Request with EXC-001 signed exception credential
+    expected: Bypasses the rate limit, logged as exception hit
+    result:
+      value: pass
+      provenance: observed
+      observed_at: '2026-06-03T12:00:00Z'
+      source:
+        system: github
+        ref: actions/runs/88393
+  - id: T5
+    kind: rollback
+    method: Execute graduated rollback block -> challenge -> log in canary scope
+    expected: Each step takes effect within 90s
+    result:
+      value: pass
+      provenance: observed
+      observed_at: '2026-06-05T14:00:00Z'
+      source:
+        system: github
+        ref: actions/runs/88412
+  - id: T6
+    kind: evasion
+    method: Sustained crawl at 195 req/min, just under the 200 threshold
+    expected: Passes the limit; quantify remaining attacker throughput
+    result:
+      value: 97% of attacker goal achievable under threshold
+      provenance: observed
+      observed_at: '2026-06-03T13:00:00Z'
+      source:
+        system: github
+        ref: actions/runs/88394
+  evasion_analysis:
+    bypasses:
+    - description: Slow the crawl to just under 200 req/min per source
+      cost_to_attacker: trivial
+      tested: true
+      test_result:
+        value: Full catalogue still retrievable in 3.5h vs 40min
+        provenance: observed
+        observed_at: '2026-06-03T13:00:00Z'
+        source:
+          system: github
+          ref: actions/runs/88394
+      disposition: mitigated
+      disposition_rationale: 'Rate limit alone loses this. Mitigated by pairing with the managed challenge
+        at threshold rather than a pass, so sub-threshold crawlers still pay a challenge cost per session,
+        and by the per-session limit in WAF-RL-01.
+
+        '
+    - description: Distribute the crawl across many residential IPs at low per-IP rate
+      cost_to_attacker: moderate
+      tested: true
+      test_result:
+        value: Detected via per-session and catalogue-coverage signals, not per-IP rate
+        provenance: observed
+        observed_at: '2026-06-03T13:40:00Z'
+        source:
+          system: github
+          ref: actions/runs/88395
+      disposition: mitigated
+      disposition_rationale: Catalogue-coverage-per-session signal added to the rule.
+    - description: Obtain a legitimate partner signature and scrape within contracted limits
+      cost_to_attacker: high
+      tested: false
+      disposition: accepted
+      disposition_rationale: 'Requires a commercial relationship and stays within contracted rates. This
+        is a contract enforcement problem, not an edge problem. Reviewed at renewal.
+
+        '
+      accepted_by:
+        decision: approved
+        by:
+          name: Joy Okonkwo
+          identity: j.okonkwo@acme.example
+          role: Director of Platform Security
+        at: '2026-06-04T09:00:00Z'
+        rationale: Accepted risk; addressed contractually rather than technically.
+        authored_by_agent: false
+    threshold_evasion_margin:
+      value: 0.03
+      provenance: derived
+      derived_from:
+      - validation_plan.tests[5].result
+      method: 1 - (attacker throughput retained under threshold / unconstrained throughput)
+    reviewed_by:
+      name: Marco Silva
+      identity: m.silva@acme.example
+      role: Edge Engineer
+  calibration:
+    initial_hypothesis: Cap at 300 req/min based on prior incident
+    shadow_finding: 'p99.5 of legitimate anonymous sessions peaks at 140 req/min. 300 leaves a wide corridor
+      for abuse; 200 sits above legitimate traffic with headroom.
+
+      '
+    adjusted_threshold: Challenge at 200/min, block at 400/min
+    justified_by_distribution:
+      value: 200 = p99.9 of legitimate session rate over 14d
+      provenance: observed
+      observed_at: '2026-06-04T00:00:00Z'
+      source:
+        system: datadog
+        ref: p99.9:session.request_rate{path:/v2/pricing/live,auth:none}
+        window: 14d
+  measured:
+    false_positive_rate:
+      value: 0.0006
+      provenance: observed
+      observed_at: '2026-06-04T00:00:00Z'
+      source:
+        system: datadog
+        ref: sum:waf.fp{path:/v2/pricing/live}/sum:http.requests{path:/v2/pricing/live}
+        window: 2d
+    false_positive_rate_by_critical_flow:
+      partner-pricing-pull:
+        value: 0.0
+        provenance: observed
+        observed_at: '2026-06-04T00:00:00Z'
+        source:
+          system: datadog
+          ref: sum:waf.fp{flow:partner-pricing-pull}
+          window: 2d
+      web-pricing-page:
+        value: 0.0009
+        provenance: observed
+        observed_at: '2026-06-04T00:00:00Z'
+        source:
+          system: datadog
+          ref: sum:waf.fp{flow:web-pricing-page}
+          window: 2d
+    latency_delta_ms:
+      value: 6
+      provenance: derived
+      derived_from:
+      - validation_plan.baseline.latency_ms
+      method: p95 during shadow (48ms) minus baseline p95 (42ms)
+    rollback_tested:
+      value: true
+      provenance: observed
+      observed_at: '2026-06-05T14:00:00Z'
+      source:
+        system: github
+        ref: actions/runs/88412
+    rollback_actual_seconds:
+      value: 71
+      provenance: observed
+      observed_at: '2026-06-05T14:00:00Z'
+      source:
+        system: github
+        ref: actions/runs/88412
+    true_positive_rate:
+      value: 0.94
+      provenance: observed
+      observed_at: '2026-06-04T00:00:00Z'
+      source:
+        system: datadog
+        ref: dashboard/waf-pricing-01 tp_rate
+        window: 2d
+  go_no_go:
+    support_briefed: true
+    runbook_published: runbooks/waf-pricing-rl.md
+    signature:
+      decision: approved
+      by:
+        name: Joy Okonkwo
+        identity: j.okonkwo@acme.example
+        role: Director of Platform Security
+      at: '2026-06-05T16:00:00Z'
+      rationale: 'FP 0.06% against a 0.1% budget, zero on partner flow, latency +6ms against a 15ms budget,
+        rollback rehearsed at 71s. Threshold evasion is understood and mitigated rather than ignored.
+        Proceed to staged enforcement.
+
+        '
+      authored_by_agent: false
+exception_register:
+  exceptions:
+  - id: EXC-001
+    applies_to:
+    - WAF-RL-01
+    scope: BetaCorp integration traffic during signature migration
+    mechanism:
+      kind: signed-header
+      detail: 'Temporary HMAC-signed header issued to BetaCorp, distinct from the production partner signature,
+        scoped to /v2/pricing/live only.
+
+        '
+    rationale: 'BetaCorp''s May platform migration dropped the partner signature header. Their fix ships
+      2026-06-30. Blocking them breaches an active SLA.
+
+      '
+    approver:
+      decision: approved
+      by:
+        name: Joy Okonkwo
+        identity: j.okonkwo@acme.example
+        role: Director of Platform Security
+      at: '2026-06-03T10:00:00Z'
+      rationale: Time-boxed to their committed fix date plus two weeks.
+      authored_by_agent: false
+    compensating_control:
+      description: 'Exception credential is rate-limited to BetaCorp''s contracted 10 req/s, is bound
+        to their signature, and every hit is alerted to #partner-integrations. Credential rotates weekly.
+
+        '
+      telemetry:
+        system: datadog
+        ref: sum:waf.exception_hit{exception:EXC-001}
+        window: 7d
+    blast_radius:
+      description: 'Read-only pricing data on one endpoint, rate-capped, cryptographically bound to one
+        party. Compromise exposes public-equivalent pricing at contracted rates.
+
+        '
+      severity: low
+      unauthenticated: false
+      data_reachable: internal
+    created: '2026-06-03'
+    expiry: '2026-07-14'
+    expiry_action: auto-revoke
+    review_cadence: weekly
+    reduction_plan: BetaCorp restores the production partner signature by 2026-06-30; credential auto-revokes
+      2026-07-14.
+    usage:
+      value: 18400
+      provenance: observed
+      observed_at: '2026-07-14T00:00:00Z'
+      source:
+        system: datadog
+        ref: sum:waf.exception_hit{exception:EXC-001}
+        window: 30d
+    status: retired
+execution:
+  change_record: https://github.com/acme/edge-infra/pull/2291
+  rollout_stages:
+  - name: canary
+    scope: 5% of unauthenticated traffic, single PoP
+    abort_criteria: FP rate on web-pricing-page > 0.001 over 30min, or p95 latency delta > 15ms
+    started: '2026-06-08T02:00:00Z'
+    completed: '2026-06-08T06:00:00Z'
+    aborted: false
+  - name: region
+    scope: EU edge, all unauthenticated traffic
+    abort_criteria: Any partner block event, or origin 5xx rate above baseline + 0.5pp
+    started: '2026-06-08T06:00:00Z'
+    completed: '2026-06-09T00:00:00Z'
+    aborted: false
+  - name: full
+    scope: Global
+    abort_criteria: Any partner block event, or support ticket rate +20% over trailing 7d mean
+    started: '2026-06-09T02:00:00Z'
+    completed: '2026-06-09T14:00:00Z'
+    aborted: false
+  dashboards_live:
+    value: true
+    provenance: observed
+    observed_at: '2026-06-08T01:30:00Z'
+    source:
+      system: datadog
+      ref: api/v1/dashboard/waf-pricing-01
+  alert_routing_live:
+    value: true
+    provenance: observed
+    observed_at: '2026-06-08T01:35:00Z'
+    source:
+      system: pagerduty
+      ref: api/services/EDGE-P1 test-notification
+  runbook: runbooks/waf-pricing-rl.md
+  rollback_rehearsed:
+    value: true
+    provenance: observed
+    observed_at: '2026-06-05T14:00:00Z'
+    source:
+      system: github
+      ref: actions/runs/88412
+  enforcement_authorization:
+    decision: approved
+    by:
+      name: Joy Okonkwo
+      identity: j.okonkwo@acme.example
+      role: Director of Platform Security
+    at: '2026-06-08T01:45:00Z'
+    rationale: All Validate gates green, rollback rehearsed, staged plan with abort criteria agreed.
+    authored_by_agent: false
+refinement_log:
+  entries:
+  - date: '2026-06-23'
+    version: v1.1.0
+    kind: threshold-tune
+    change: Raised challenge threshold from 200 to 220 req/min
+    evidence:
+      value: Post-enforcement p99.9 of legitimate sessions rose to 168 req/min after the pricing page
+        added a live-refresh widget; 200 was producing avoidable challenges.
+      provenance: observed
+      observed_at: '2026-06-23T00:00:00Z'
+      source:
+        system: datadog
+        ref: p99.9:session.request_rate{path:/v2/pricing/live}
+        window: 14d
+    impact:
+      value: Challenge rate on web-pricing-page fell 31%, no change in scraping volume
+      provenance: observed
+      observed_at: '2026-06-30T00:00:00Z'
+      source:
+        system: datadog
+        ref: dashboard/waf-pricing-01
+        window: 7d
+  - date: '2026-07-14'
+    version: v1.2.0
+    kind: exception-retired
+    change: EXC-001 auto-revoked on schedule after BetaCorp restored their partner signature
+    evidence:
+      value: Zero exception hits in the 9 days before expiry; BetaCorp signature verified in production
+        2026-06-28.
+      provenance: observed
+      observed_at: '2026-07-14T00:00:00Z'
+      source:
+        system: datadog
+        ref: sum:waf.exception_hit{exception:EXC-001}
+        window: 14d
+    impact:
+      value: Exception count 1 -> 0; one bypass path removed
+      provenance: observed
+      observed_at: '2026-07-14T00:00:00Z'
+      source:
+        system: datadog
+        ref: dashboard/waf-pricing-01
+    retires:
+    - EXC-001
+  complexity_trend:
+    control_count:
+      value: 2
+      provenance: observed
+      observed_at: '2026-08-01T00:00:00Z'
+      source:
+        system: terraform
+        ref: modules/waf/pricing.tf
+    exception_count:
+      value: 0
+      provenance: observed
+      observed_at: '2026-08-01T00:00:00Z'
+      source:
+        system: terraform
+        ref: modules/waf/exceptions.tf
+    mean_exception_age_days:
+      value: 0
+      provenance: observed
+      observed_at: '2026-08-01T00:00:00Z'
+      source:
+        system: terraform
+        ref: modules/waf/exceptions.tf
+    expired_unactioned_count:
+      value: 0
+      provenance: observed
+      observed_at: '2026-08-01T00:00:00Z'
+      source:
+        system: terraform
+        ref: modules/waf/exceptions.tf
+  drift_check:
+    last_run: '2026-08-15'
+    threshold_adjustments_count:
+      value: 1
+      provenance: observed
+      observed_at: '2026-08-15T00:00:00Z'
+      source:
+        system: github
+        ref: repos/acme/edge-infra/commits?path=modules/waf/pricing.tf
+    escalation_recommended: false
+    new_bypasses_observed: []
+audit:
+- at: '2026-06-01T09:15:00Z'
+  actor: agent:example
+  action: discovery
+  detail: Read modules/waf/*.tf, openapi/pricing.yaml, datadog dashboard defs; drafted asset scope and
+    control inventory
+  prev: '0000000000000000000000000000000000000000000000000000000000000000'
+  hash: d34ee0555b97cb1cac4a38d2b4a055d15b37b7128c656a976e688b378de2f0bf
+- at: '2026-06-01T10:00:00Z'
+  actor: j.okonkwo@acme.example
+  action: supplied guardrails
+  detail: FP tolerance 0.001, latency budget 15ms p95
+  prev: d34ee0555b97cb1cac4a38d2b4a055d15b37b7128c656a976e688b378de2f0bf
+  hash: 6736519d792b31ab9b201ece8f60a15233a6166988d9cc759a5a60385371c58b
+- at: '2026-06-04T00:10:00Z'
+  actor: agent:example
+  action: gate run
+  detail: validate stage, 0 blocking
+  prev: 6736519d792b31ab9b201ece8f60a15233a6166988d9cc759a5a60385371c58b
+  hash: 1d7cf44e494479094a1e545adaabef765ad6dc5564273dce92b618d4b96ef832
+- at: '2026-06-08T01:45:00Z'
+  actor: j.okonkwo@acme.example
+  action: authorized enforcement
+  detail: Signed execution.enforcement_authorization
+  prev: 1d7cf44e494479094a1e545adaabef765ad6dc5564273dce92b618d4b96ef832
+  hash: 0e0d3acc39340ad4d272fc53b20879a3d57bcf91b06da2c7241963b1cbd502a7

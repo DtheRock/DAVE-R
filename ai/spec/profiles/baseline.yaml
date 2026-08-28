@@ -1,0 +1,7 @@
+id: baseline
+name: Baseline
+description: >
+  Default. Every core and adapter gate at its declared severity. Integrity gates
+  (X-1..X-3) stay advisory, so a team can adopt DAVE+R without first standing up
+  signing keys and telemetry resolvers.
+severity_overrides: {}

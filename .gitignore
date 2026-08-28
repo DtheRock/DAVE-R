@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+dist/
+.daver/allowed_signers
+.daver/resolvers.json
+*.digest
+*.digest.sig
+
+# working file, not part of the project
+PR_BODY.md
