@@ -165,16 +165,31 @@ def cmd_verify(args) -> int:
         print(json.dumps(r, indent=2, default=str))
         return 0 if r["ok"] else 1
     c = r["counts"]
-    verdict = "OK" if r["ok"] else "FAILED"
-    if r["ok"] and c["skipped"] and not c["match"]:
+    # Three outcomes, not two. A value nobody could check is not a value that checked
+    # out, and it is also not a lie: reporting either would mislead.
+    if not r["ok"]:
+        verdict = "FAILED"
+    elif c["match"] == 0 and c["no_resolver"]:
         verdict = "INCONCLUSIVE"
+    elif c["no_resolver"]:
+        verdict = "PARTIAL"
+    else:
+        verdict = "OK"
     print(f"evidence verification: {verdict}")
     if verdict == "INCONCLUSIVE":
-        print(f"  nothing was actually re-verified: {c['skipped']} value(s) use telemetry "
-              f"systems with no registered resolver.")
-        print("  register resolvers, or run --strict to treat this as a failure.")
+        print(f"  nothing was re-verified. All {c['no_resolver']} observed value(s) use "
+              f"telemetry systems with no registered resolver.")
+    elif verdict == "PARTIAL":
+        print(f"  {c['match']} value(s) verified; {c['no_resolver']} could not be checked "
+              f"either way for want of a resolver.")
+    if c["no_resolver"]:
+        systems = sorted({f.get("system") for f in r["findings"]
+                          if f["status"] == "no_resolver" and f.get("system")})
+        print(f"  unwired systems: {', '.join(systems)}")
+        print("  Register a resolver per system, export those measurements to a JSON file "
+              "and point the sources at it, or run --strict to treat this as a failure.")
     print(f"  match {c['match']}, drift {c['drift']}, unresolvable {c['unresolvable']}, "
-          f"error {c['error']}, skipped {c['skipped']}")
+          f"error {c['error']}, no-resolver {c['no_resolver']}")
     print(f"  resolvers registered: {', '.join(r['registered_resolvers'])}")
     print(f"  evidence root: {r['root']}")
     if not resolvers.exec_enabled():
