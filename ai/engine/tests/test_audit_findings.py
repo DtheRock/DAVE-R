@@ -297,3 +297,20 @@ def test_matches_subject_is_bounded():
     r = evaluate({"matches": ["module.s", "^a+$"]}, Context(cycle=cycle))
     assert r.ok  # still works, just on a bounded prefix
     assert MAX_MATCH_SUBJECT <= 65536
+
+
+# --- visitor-path audit F-D: MCP server WORKSPACE must not fail open -------
+
+def test_mcp_server_refuses_to_start_without_explicit_workspace(tmp_path):
+    """A silent default to cwd makes DAVER_WORKSPACE decoration, not a boundary.
+
+    Requires the optional `mcp` package; skipped where it is not installed, same
+    as the rest of the MCP surface, which has no other coverage in this suite.
+    """
+    pytest.importorskip("mcp")
+    server_py = os.path.join(os.path.dirname(__file__), "..", "..", "mcp", "server.py")
+    env = {k: v for k, v in os.environ.items() if k != "DAVER_WORKSPACE"}
+    result = subprocess.run([sys.executable, server_py], cwd=str(tmp_path), env=env,
+                            capture_output=True, text=True, timeout=15)
+    assert result.returncode != 0, "server started with no explicit DAVER_WORKSPACE"
+    assert "DAVER_WORKSPACE" in result.stderr
