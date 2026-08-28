@@ -8,6 +8,14 @@
 #   then sha256 each wheel. See ai/requirements-ci.txt's header for the same recipe
 #   and the note on what to do when a bump adds a new transitive dependency.
 #
+# CI-only - do not point a human at this file. It is hash-pinned to exactly one
+# platform/interpreter, and --require-hashes correctly refuses to install it on any
+# other: a different Python minor version or OS/architecture legitimately resolves
+# different wheels (cffi, pydantic-core and rpds-py all differ by Python version;
+# more differ by OS) with different, equally valid hashes - not tampering, just a
+# platform this file was never resolved for. See ai/INSTALL.md for the portable
+# install command.
+#
 # mcp is pinned below 2.0: mcp 2.x renamed FastMCP to MCPServer and server.py has
 # not been migrated. `pip install mcp` alone (no upper bound) installs 2.x today
 # and the server will not start; see ai/mcp/README.md.

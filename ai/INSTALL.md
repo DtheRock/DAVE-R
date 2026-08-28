@@ -91,14 +91,19 @@ Using it in place from a checkout works too, in either product: point the agent 
 ## 3. As an MCP server
 
 ```bash
-pip install pyyaml
-pip install --require-hashes -r ai/mcp/requirements.txt
+pip install pyyaml "mcp<2" jsonschema referencing
 ```
 
-That second command installs `mcp` pinned below 2.0 (2.x renamed `FastMCP` to
-`MCPServer`; `ai/mcp/server.py` has not been migrated, and a bare `pip install mcp`
-installs 2.x today) plus `jsonschema`/`referencing` for schema validation, hash-pinned
-the same way `ai/requirements-ci.txt` is.
+`mcp<2` matters: mcp 2.x renamed `FastMCP` to `MCPServer`, `ai/mcp/server.py` has not
+been migrated, and a bare `pip install mcp` installs 2.x today. `jsonschema` and
+`referencing` are for `daver_validate_schema`.
+
+CI installs the same packages hash-pinned for reproducibility, the way
+`ai/requirements-ci.txt` is: `pip install --require-hashes -r ai/mcp/requirements.txt`.
+That file is resolved for exactly one platform (linux/x86_64, CPython 3.11); it is not
+a portable install command, which is why the command above doesn't use it - a
+different platform or Python version legitimately needs different wheels, and
+`--require-hashes` (correctly) refuses to substitute them.
 
 ```json
 {
@@ -191,7 +196,7 @@ value. See `ai/engine/daver/resolvers.py`; `file` is about thirty lines.
 ```bash
 python3 ai/engine/daver_cli.py lint                                    # spec self-check
 python3 ai/engine/daver_cli.py check ai/engine/tests/fixtures/reference.cycle.yaml --stage refine
-pip install pytest && python3 -m pytest ai/engine/tests -q             # 122 tests
+pip install pytest && python3 -m pytest ai/engine/tests -q             # 123 tests
 bash ai/examples/signing/demo.sh                                       # needs ssh-keygen
 ```
 
