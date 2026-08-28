@@ -6,6 +6,12 @@
 #   pip download -r ai/requirements-ci.txt -d /tmp/w --python-version 3.11 --only-binary :all:
 #   then sha256 each wheel.
 #
+# --require-hashes pins the FULL resolved graph, not just the top-level names
+# below: a version bump that pulls in a new transitive dependency (as the
+# pytest 8.3.4 -> 9.0.3 bump did with pygments) needs that new package added
+# here too, or the install fails closed rather than silently skipping the
+# check. Re-run the two commands above after any bump, including Dependabot's.
+#
 # The engine itself needs only PyYAML. pytest and its dependencies are here
 # because CI runs the test suite; a consumer running only the gates needs the
 # first entry alone.
@@ -22,3 +28,5 @@ packaging==26.3 \
     --hash=sha256:d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c
 pluggy==1.6.0 \
     --hash=sha256:e920276dd6813095e9377c0bc5566d94c932c33b27a3e3945d8389c374dd4746
+pygments==2.21.0 \
+    --hash=sha256:2363c69b61c4a97c838da3b130dcd6468f4848992b21a82f2a63ec34377137d9
