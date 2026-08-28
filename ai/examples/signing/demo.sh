@@ -5,41 +5,52 @@
 # throwaway one in a temp dir so you can see the control work, then throws it away.
 # In real use the signing key lives on the accountable owner's machine, ideally in a
 # hardware token, and never anywhere an agent can read it.
+#
+# Note the TWO directories. The cycle lives in the workspace under examination; the
+# key and the trust anchor live outside it, in operator space. That separation is the
+# control: an agent that can write the anchor can add its own key and forge a human
+# sign-off, so an anchor found inside the workspace is refused rather than trusted.
+# The last section demonstrates exactly that refusal.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-WORK="$(mktemp -d)"
-trap 'rm -rf "$WORK"' EXIT
+WORK="$(mktemp -d)"       # workspace under examination (agent-writable)
+OPERATOR="$(mktemp -d)"   # operator space (agent must never write here)
+trap 'rm -rf "$WORK" "$OPERATOR"' EXIT
 
-mkdir -p "$WORK/.daver"
 cp "$ROOT/engine/tests/fixtures/reference.cycle.yaml" "$WORK/cycle.yaml"
 
-echo "==> the accountable owner generates a key (normally: already has one)"
-ssh-keygen -t ed25519 -f "$WORK/owner" -N "" -C "j.okonkwo@acme.example" -q
-printf 'j.okonkwo@acme.example %s\n' "$(cut -d' ' -f1,2 "$WORK/owner.pub")" > "$WORK/.daver/allowed_signers"
-
-echo
-echo "==> before signing, under the agent-operated profile"
-python3 "$ROOT/engine/daver_cli.py" check "$WORK/cycle.yaml" --stage refine \
-  --profile agent-operated 2>&1 | sed -n '1,8p' || true
-
-echo
-echo "==> what the human is asked to sign"
-python3 "$ROOT/engine/daver_cli.py" sign-request "$WORK/cycle.yaml" --subject go_no_go \
-  | sed -n '1,6p'
-
-echo
-echo "==> the human signs, out of band, with their own key"
-for SUBJ in go_no_go enforcement; do
-  D=$(ROOT="$ROOT" python3 - "$WORK/cycle.yaml" "$SUBJ" <<'PY'
+digest() {  # digest <subject>
+  ROOT="$ROOT" python3 - "$WORK/cycle.yaml" "$1" <<'PY'
 import sys, os
 sys.path.insert(0, os.path.join(os.environ["ROOT"], "engine"))
 from daver import integrity, load_cycle
 print(integrity.signature_digest(load_cycle(sys.argv[1]), sys.argv[2]))
 PY
-)
-  printf '%s' "$D" > "$WORK/$SUBJ.digest"
-  ssh-keygen -Y sign -f "$WORK/owner" -n dave-r "$WORK/$SUBJ.digest" >/dev/null 2>&1
+}
+
+echo "==> the accountable owner generates a key, in operator space"
+ssh-keygen -t ed25519 -f "$OPERATOR/owner" -N "" -C "j.okonkwo@acme.example" -q
+printf 'j.okonkwo@acme.example %s\n' "$(cut -d' ' -f1,2 "$OPERATOR/owner.pub")" \
+  > "$OPERATOR/allowed_signers"
+
+echo
+echo "==> before signing, under the agent-operated profile"
+DAVER_ALLOWED_SIGNERS="$OPERATOR/allowed_signers" \
+  python3 "$ROOT/engine/daver_cli.py" check "$WORK/cycle.yaml" --stage refine \
+  --profile agent-operated --evidence-root "$WORK" 2>&1 \
+  | grep -E "^BLOCKED|^CAN ADVANCE|^BLOCK X-" | sed 's/^/  /' || true
+
+echo
+echo "==> what the human is asked to sign"
+python3 "$ROOT/engine/daver_cli.py" sign-request "$WORK/cycle.yaml" --subject go_no_go \
+  | sed -n '1,4p'
+
+echo
+echo "==> the human signs, out of band, with their own key"
+for SUBJ in go_no_go enforcement; do
+  printf '%s' "$(digest "$SUBJ")" > "$WORK/$SUBJ.digest"
+  ssh-keygen -Y sign -f "$OPERATOR/owner" -n dave-r "$WORK/$SUBJ.digest" >/dev/null 2>&1
 done
 
 ROOT="$ROOT" python3 - "$WORK" <<'PY'
@@ -54,24 +65,47 @@ yaml.safe_dump(c, open(f"{w}/cycle.yaml", "w"), sort_keys=False, width=100)
 PY
 
 echo
-echo "==> after signing"
-DAVER_EVIDENCE_ROOT="$WORK" python3 "$ROOT/engine/daver_cli.py" check "$WORK/cycle.yaml" \
-  --stage refine --profile agent-operated 2>&1 | sed -n '1,4p'
+echo "==> after signing (X-2 satisfied; X-3 still blocks, correctly, because this"
+echo "    fixture's telemetry systems have no registered resolver to re-run)"
+DAVER_ALLOWED_SIGNERS="$OPERATOR/allowed_signers" \
+  python3 "$ROOT/engine/daver_cli.py" check "$WORK/cycle.yaml" --stage refine \
+  --profile agent-operated --evidence-root "$WORK" 2>&1 \
+  | grep -E "^BLOCKED|^CAN ADVANCE|^BLOCK X-" | sed 's/^/  /' || true
 
 echo
-echo "==> now tamper: widen the guardrail after the owner signed"
+echo "==> tamper: widen the guardrail after the owner signed"
 python3 - "$WORK/cycle.yaml" <<'PY'
 import sys, yaml
 c = yaml.safe_load(open(sys.argv[1]))
 c["definition_brief"]["guardrails"]["false_positive_tolerance"]["value"] = 0.5
 yaml.safe_dump(c, open(sys.argv[1], "w"), sort_keys=False, width=100)
 PY
-# verify-signatures exits non-zero when signatures are invalid, which is the expected
-# outcome here, so do not let pipefail treat the demo's success as a failure.
 set +e
-DAVER_EVIDENCE_ROOT="$WORK" python3 "$ROOT/engine/daver_cli.py" verify-signatures "$WORK/cycle.yaml" \
-  > "$WORK/sigcheck.json"
+DAVER_ALLOWED_SIGNERS="$OPERATOR/allowed_signers" \
+  python3 "$ROOT/engine/daver_cli.py" verify-signatures "$WORK/cycle.yaml" \
+  --evidence-root "$WORK" > "$WORK/sigcheck.json" 2>&1
 set -e
-python3 -c "import json; print('signatures valid:', json.load(open('$WORK/sigcheck.json'))['ok'])"
+python3 -c "import json;print('  signatures valid:', json.load(open('$WORK/sigcheck.json'))['ok'])"
+echo "  The digest covers the guardrails, the evidence, the control matrix, the"
+echo "  exception register and the audit chain head, not just the word 'approved'."
+
 echo
-echo "The signature covers the guardrails and the evidence, not just the word 'approved'."
+echo "==> the forgery that anchor separation prevents"
+echo "    (an agent writes its own key into an allowed_signers inside the workspace)"
+mkdir -p "$WORK/.daver"
+ssh-keygen -t ed25519 -f "$WORK/.daver/agent_key" -N "" -C "j.okonkwo@acme.example" -q
+printf 'j.okonkwo@acme.example %s\n' "$(cut -d' ' -f1,2 "$WORK/.daver/agent_key.pub")" \
+  > "$WORK/.daver/allowed_signers"
+set +e
+python3 "$ROOT/engine/daver_cli.py" verify-signatures "$WORK/cycle.yaml" \
+  --allowed-signers "$WORK/.daver/allowed_signers" --evidence-root "$WORK" \
+  > "$WORK/forged.json" 2>&1
+set -e
+python3 - "$WORK/forged.json" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1]))
+subs = d.get("subjects")
+detail = subs.get("go_no_go", {}).get("detail", "") if isinstance(subs, dict) else str(subs)
+print("  agent-written anchor inside the workspace:", "REFUSED" if not d["ok"] else "ACCEPTED")
+print("  ", " ".join(detail.split())[:110])
+PY

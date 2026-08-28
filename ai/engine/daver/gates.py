@@ -99,8 +99,12 @@ class CycleReport:
 
 
 class Spec:
-    def __init__(self, root: str | None = None, profile: str = "baseline"):
+    def __init__(self, root: str | None = None, profile: str = "baseline",
+                 evidence_root: str | None = None):
         self.root = _spec_root(root)
+        # Containment for anything that touches the filesystem on behalf of a
+        # gate. Passed down so a caller's boundary bounds the resolver layer too.
+        self.root_for_evidence = evidence_root
         self.gates: dict[str, list[dict]] = {}
         gdir = os.path.join(self.root, "gates")
         for stage in STAGES:
@@ -153,7 +157,12 @@ class Spec:
                     passed, reason = False, f"check '{g['check']}' is not implemented by this executor"
                 else:
                     opts = dict(self.profile.get("options") or {})
-                    passed, reason = fn(ctx.cycle, opts)
+                    opts.setdefault("root", self.root_for_evidence)
+                    outcome = fn(ctx.cycle, opts)
+                    if len(outcome) == 3:
+                        passed, reason, applicable = outcome
+                    else:
+                        passed, reason = outcome
             else:
                 r = evaluate(g["assert"], ctx)
                 passed, reason = bool(r), r.reason
@@ -235,4 +244,52 @@ class Spec:
                 problems.append(f"{gid}: severity must be blocking or advisory")
             if g.get("requires_evidence") and "provenance_in" not in yaml.safe_dump(g.get("assert", {})):
                 problems.append(f"{gid}: declares requires_evidence but never asserts provenance_in")
+            if "assert" in g:
+                for bad in self._unresolvable_refs(g):
+                    problems.append(
+                        f"{gid}: reference '{bad}' has no known root. A misspelled root "
+                        f"silently becomes a string literal at runtime, so the gate "
+                        f"passes without checking anything.")
         return problems
+
+    # Every artifact root a reference may legitimately start from.
+    _KNOWN_ROOTS = frozenset({
+        "definition_brief", "control_matrix", "validation_plan", "exception_register",
+        "refinement_log", "execution", "module", "audit", "adapter",
+        "spec_version", "cycle_id", "stage",
+        "item", "outer",          # loop bindings
+    })
+
+    def _unresolvable_refs(self, g: dict) -> list[str]:
+        """Dry-run a gate's references against the known artifact roots.
+
+        Converts a silent runtime pass into a build-time error, and gives
+        third-party adapter authors a real conformance check: adapters are the
+        declared extension point and get no other review.
+        """
+        bad, seen = [], set()
+
+        def walk(node):
+            if isinstance(node, dict):
+                for v in node.values():
+                    walk(v)
+            elif isinstance(node, list):
+                for v in node:
+                    walk(v)
+            elif isinstance(node, str):
+                check(node)
+
+        def check(ref: str):
+            if not ref or ref in seen:
+                return
+            seen.add(ref)
+            if ref.startswith("$") or "." not in ref or " " in ref:
+                return                       # special ref, enum value, regex or prose
+            head = ref.split(".", 1)[0].split("[", 1)[0]
+            if not head or not head.replace("_", "").isalnum():
+                return
+            if head.islower() and head not in self._KNOWN_ROOTS:
+                bad.append(ref)
+
+        walk(g.get("assert"))
+        return bad

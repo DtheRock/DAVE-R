@@ -3,10 +3,25 @@ name: DAVE+R gates
 # Runs the lifecycle gates on every cycle document in the repo. A security change
 # that has not earned enforcement fails the PR, which is the point: the discipline
 # should be enforced by the pipeline, not by whoever remembers to run the CLI.
+#
+# ---------------------------------------------------------------------------
+# SECURITY NOTES FOR ANYONE COPYING THIS TEMPLATE
+#
+# 1. `pull_request` is load-bearing. Do NOT change it to `pull_request_target`.
+#    That trigger runs with a privileged token and repository secrets against
+#    code from the fork, which turns any weakness below into credential theft.
+# 2. Do NOT add secrets to this workflow. It needs none.
+# 3. DAVER_ENABLE_EXEC is deliberately NOT set. Exec resolvers run commands
+#    declared in `.daver/resolvers.json` inside the repository being checked, so
+#    on a fork pull request that is attacker-controlled input. Leaving them off
+#    is what makes this workflow safe to run on untrusted contributions.
+# 4. `permissions: contents: read` and no secrets means a hostile PR gets, at
+#    worst, wasted compute.
+# ---------------------------------------------------------------------------
 
 on:
   pull_request:
-    paths: ['**/*.cycle.yaml', 'ai/spec/**', 'ai/engine/**']
+    paths: ['**/*.cycle.yaml', 'ai/spec/**', 'ai/engine/**', '.github/workflows/daver-gates.yml']
   push:
     branches: [main]
   schedule:
@@ -15,22 +30,36 @@ on:
 permissions:
   contents: read
 
+env:
+  # Explicit rather than merely absent, so the intent survives a copy-paste.
+  DAVER_ENABLE_EXEC: '0'
+
 jobs:
   gates:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with: { persist-credentials: false }
+      - uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b # v5.3.0
         with: { python-version: '3.11' }
-      - run: pip install pyyaml jsonschema referencing
+
+      - name: Install pinned dependencies
+        run: pip install --require-hashes -r ai/requirements-ci.txt
 
       - name: Spec self-lint
         run: python3 ai/engine/daver_cli.py lint
 
       - name: Engine tests
+        run: python3 -m pytest ai/engine/tests -q
+
+      - name: Confirm exec resolvers are off
         run: |
-          pip install pytest
-          python3 -m pytest ai/engine/tests -q
+          python3 - <<'PY'
+          import sys; sys.path.insert(0, "ai/engine")
+          from daver import resolvers
+          assert not resolvers.exec_enabled(), "exec resolvers must be disabled in CI"
+          print("exec resolvers disabled:", resolvers.registered())
+          PY
 
       - name: Run gates on every cycle document
         run: |
@@ -38,35 +67,32 @@ jobs:
           failed=0
           found=0
           for c in **/*.cycle.yaml; do
-            case "$c" in ai/engine/tests/fixtures/scenario*) continue ;; esac
+            # Test fixtures are exercised by pytest with the profiles and expected
+            # outcomes they were written for. Gating them here fails main forever:
+            # reference.cycle.yaml can never satisfy X-2, because that needs a real
+            # detached signature and an allowed_signers file that is deliberately
+            # not committed.
+            case "$c" in ai/engine/tests/fixtures/*) continue ;; esac
             found=1
             echo "::group::$c"
             python3 ai/engine/daver_cli.py check "$c" --profile "${DAVER_PROFILE:-agent-operated}" || failed=1
             echo "::endgroup::"
           done
-          [ "$found" = 1 ] || echo "no cycle documents found"
+          [ "$found" = 1 ] || echo "no cycle documents to gate"
           exit $failed
         env:
           DAVER_PROFILE: agent-operated
 
+      - name: Fixtures still behave as documented
+        run: |
+          set -e
+          # Skipping the fixtures above must not mean nobody checks them.
+          python3 ai/engine/daver_cli.py check ai/engine/tests/fixtures/reference.cycle.yaml \
+            --stage refine --profile baseline
+          ! python3 ai/engine/daver_cli.py check ai/engine/tests/fixtures/reference.cycle.yaml \
+            --stage refine --profile agent-operated
+          echo "reference fixture: advances under baseline, blocks under agent-operated (X-2 unsigned). Correct."
+
       - name: Exception sweep
         if: always()
         run: python3 ai/engine/daver_cli.py sweep . --window 30 || true
-
-  conformance:
-    # Only meaningful when an agent-produced cycle is committed for review.
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: { python-version: '3.11' }
-      - run: pip install pyyaml
-      - name: Agent conformance evals
-        run: |
-          shopt -s nullglob
-          for c in ai/evals/cases/*.yaml; do
-            echo "case: $c"
-          done
-          echo "Attach an agent-produced cycle and run:"
-          echo "  python3 ai/evals/run.py <case> <produced.cycle.yaml>"

@@ -7,6 +7,15 @@ do, what stops it, and what is not stopped.
 Written to the same standard the framework asks of any control: named threats,
 observable signatures, explicit residual risk.
 
+> **Revised in 1.1.1 after an adversarial review.** The first version of this
+> document assumed one deployment: your agent, your gates, your workspace. Shipped
+> open source, the victim moves. The consumer runs this against a repository they
+> did not write, so the cycle document and anything travelling beside it are
+> attacker-controlled, and **the defaults are the security policy** — you cannot
+> instruct every downstream user, and almost none will read this file. Four claims
+> below were false when that assumption changed; they are corrected in place and
+> the review is credited at the end.
+
 ## Trust boundaries
 
 ```
@@ -87,8 +96,14 @@ Register a resolver per system, or run `--strict`.
 **Severity: Medium.** Wrapping an assertion in a `derived` value to launder it into
 evidence.
 
-**Control.** `provenance_in` walks `derived_from` transitively and fails any derived
-value rooting in an `asserted` input. Tested.
+**The implementation did not match this claim until 1.1.1.** It checked direct parents
+only, so `asserted → derived → derived` reached an enforcement gate as valid evidence: one
+extra hop was the whole bypass. A `derived_from` naming an unresolvable path also passed,
+because the unrecognised reference fell through to a string literal.
+
+**Control now.** The derivation graph is walked to its roots with a visited set for cycles.
+Any root that is `asserted` or `unmeasured` fails, an unresolvable parent fails, and a
+derived value naming no parents fails. Tested at one, two, three and six hops.
 
 ---
 
@@ -97,9 +112,17 @@ value rooting in an `asserted` input. Tested.
 **Severity: Critical if unmitigated.** An agent writing `decision: approved` and
 `authored_by_agent: false`.
 
-**Control.** X-2 requires a detached signature over a canonical digest. The agent has no
-private key. `authored_by_agent: false` on its own proves nothing and the gate says so
-in those words.
+**The control had a hole and is now closed.** X-2 requires a detached signature and the
+agent has no private key, so it cannot *produce* one. But it could **make** one: the trust
+anchor resolved to `$DAVER_EVIDENCE_ROOT/.daver/allowed_signers`, inside the workspace the
+agent operates in, and `.gitignore` excluded it so no committed copy existed to diff
+against. Generate a keypair, write it in under the accountable human's identity, sign, and
+the forgery verified.
+
+**Control now.** The anchor is resolved from operator space (`~/.config/daver/allowed_signers`)
+and an anchor located inside the audited workspace is **refused**, not trusted. Public keys
+are not secrets: commit your own `allowed_signers` to your own repository and verify against
+that committed copy.
 
 **Residual risk:** key hygiene. A signing key on the same machine the agent controls, or
 in an agent-readable secret store, defeats this entirely. Signing keys belong on the
@@ -125,12 +148,15 @@ block, the shadow window, the triage track and the exception ID list, not just t
 **Control.** `cycle.audit` is hash-chained; edits, deletions and reordering break the
 chain at a nameable entry. X-1 blocks on a broken chain.
 
-**Residual risk, stated plainly:** an agent with write access to the cycle file can
-tamper and then re-run `daver chain`, producing a valid chain over falsified history.
-The chain detects external edits, not an author rewriting its own history. To close it,
-anchor the chain head somewhere the agent cannot rewrite: a git commit made by CI, an
-append-only log, or a signed head recorded at each stage transition. Anchoring is the
-operator's job and this repo does not do it for you.
+**Partly closed in 1.1.1.** The signed subject now includes the audit chain head, so for
+any *signed* cycle the human's signature is the external anchor the chain lacked: tampering
+and re-chaining changes the head, which invalidates the signature. Deleting the audit log
+does the same.
+
+**Residual risk, stated plainly:** this only binds cycles that carry a signature. Before
+sign-off, an agent with write access can still tamper and re-chain. To close it there,
+anchor the head somewhere the agent cannot rewrite: a git commit made by CI, or an
+append-only log. That remains the operator's job.
 
 ---
 
@@ -141,6 +167,13 @@ operator's job and this repo does not do it for you.
 **Control.** Fail closed everywhere. Malformed expressions, unknown operators,
 unimplemented checks and evaluation exceptions all evaluate to FAIL. Tested.
 
+**Two fail-open paths found in review and closed in 1.1.1.** A reference whose root was not
+recognised was returned as a literal string, so a misspelled root satisfied `exists` and a
+broken gate reported as a passing one; `lint()` now dry-runs every gate's references and
+fails the build instead. And a `check:` gate could not report "nothing to check", so X-3
+reported a clean pass on cycles where not one value had been re-verified, which was the
+common case for any consumer with no telemetry resolvers registered.
+
 ---
 
 ## T-8 Command injection via resolvers
@@ -148,9 +181,23 @@ unimplemented checks and evaluation exceptions all evaluate to FAIL. Tested.
 **Severity: High.** A cycle document is agent-written and may reflect discovered content.
 If it could name a command, T-1 would become remote code execution.
 
-**Control.** The `exec` resolver takes a **key** into `.daver/resolvers.json`, which the
-operator controls. Entries must be argv lists; a shell string is rejected. `shell=False`,
-fixed timeout, cwd pinned to the evidence root. Tested.
+**This control was inadequate and is now rewritten.** Two defects: `.daver/resolvers.json`
+was read from the evidence root, which defaults to the working directory, so it travelled
+inside the repository under examination rather than being operator-controlled; and the
+"argv list, not a shell string" rule is not a rule at all, because an argv list whose first
+element is a shell is a shell. `["/bin/sh","-c","…"]` passed. Running the gates on a
+document was enough to execute code from that document's directory.
+
+**Controls now.**
+- **The `exec` resolver is not registered by default.** It requires `DAVER_ENABLE_EXEC=1`
+  or `--allow-exec-resolvers`, and announces itself when enabled. This is the single
+  change that removes code execution from every default install, independent of the rest.
+- `argv[0]` is allowlisted against interpreters (`sh`, `bash`, `python*`, `node`, `perl`,
+  `env`, `xargs`, …) and inline-code flags (`-c`, `-e`, `--eval`) are refused. A resolver
+  needing a script points at a committed script file.
+- The containment root is supplied by the caller, not read from a second environment
+  variable, so a tool boundary bounds this layer too.
+- The MCP server refuses to start at all with exec resolvers enabled.
 
 ---
 
@@ -158,8 +205,16 @@ fixed timeout, cwd pinned to the evidence root. Tested.
 
 **Severity: Medium.** Cycle paths and source refs arrive as untrusted input.
 
-**Control.** The MCP server confines cycle paths to `DAVER_WORKSPACE`; the file resolver
-confines refs to `DAVER_EVIDENCE_ROOT`. Both reject escapes. Tested.
+**This control was incomplete and is now rewritten.** Two defects: the two roots were
+independent, so pinning `DAVER_WORKSPACE` (the documented boundary) did not constrain the
+resolver layer that actually reads files and ran commands; and both checks used
+`os.path.abspath`, which normalises `..` but follows a symlink straight out of the root.
+A cloned repository brings its symlinks with it.
+
+**Controls now.** One boundary, supplied by the caller and applied to cycle paths, resolver
+reads and the trust anchor alike. `os.path.realpath` on both sides of every comparison, and
+a symlink anywhere along the path is refused rather than followed. Tested in both
+directions.
 
 ---
 
@@ -200,6 +255,26 @@ bad luck (D-D2).
 
 ---
 
+---
+
+## T-13 Consumers copy the CI template
+
+**Severity: High under distribution.** The reference workflow is what people copy, so its
+behaviour on a hostile pull request becomes theirs. It triggers on `pull_request`, globs
+`**/*.cycle.yaml` and runs the gates, so before 1.1.1 a fork PR carrying a cycle document
+plus a `.daver/resolvers.json` got its command run in the consumer's runner.
+
+**Controls.** F-2's opt-in removes the execution path. The template now sets
+`DAVER_ENABLE_EXEC: '0'` explicitly rather than merely omitting it, carries a header
+explaining that `pull_request` is load-bearing and must not become `pull_request_target`,
+warns against adding secrets, pins actions to commit SHAs and dependencies by hash, and
+asserts in a step that exec resolvers are off.
+
+**Residual risk:** a consumer who adds secrets and switches to `pull_request_target` is
+outside anything this repository can control. The header says so.
+
+---
+
 ## What this model does not cover
 
 - The security of the controls DAVE+R is used to deploy. That is the framework's job, not
@@ -209,3 +284,12 @@ bad luck (D-D2).
 - A malicious human operator. Every control here assumes the accountable owner is acting
   in good faith. Governance frameworks bound error, not intent.
 - Supply chain of the executor itself. Pin and review it like any dependency.
+
+---
+
+## Provenance of this document
+
+The 1.1.1 revision follows an adversarial review that reproduced twelve findings against
+`d821008`, including three criticals that this document had previously described as
+controlled. Where a claim was wrong it has been corrected in place rather than quietly
+removed, because a threat model that hides its own misses is worth less than none.

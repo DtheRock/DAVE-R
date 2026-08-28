@@ -79,7 +79,68 @@ def verify_audit(cycle: dict) -> dict:
     return {"ok": True, "entries": len(entries), "head": prev}
 
 
+
+# --- trust anchor ----------------------------------------------------------
+
+OPERATOR_ANCHORS = (
+    os.path.join(os.path.expanduser("~"), ".config", "daver", "allowed_signers"),
+    os.path.join(os.path.expanduser("~"), ".daver", "allowed_signers"),
+)
+
+
+def resolve_trust_anchor(explicit: str | None = None,
+                         workspace: str | None = None) -> tuple[str | None, str]:
+    """Locate allowed_signers, refusing any anchor inside the audited workspace.
+
+    X-2's whole claim is that the agent cannot produce a valid signature because
+    it has no private key. That held only until you noticed the agent could write
+    its OWN key into the trust anchor: the anchor lived at
+    $DAVER_EVIDENCE_ROOT/.daver/allowed_signers, inside the workspace the agent
+    operates in, and .gitignore excluded it so no committed copy existed to diff
+    against. Generate a keypair, add it under the accountable human's identity,
+    sign, and the forgery verifies.
+
+    So the anchor now comes from operator space by default, and an anchor located
+    inside the workspace is refused rather than trusted. Public keys are not
+    secrets: the right pattern is to commit your own allowed_signers to your own
+    repository and verify against that.
+    """
+    ws = os.path.realpath(workspace) if workspace else None
+
+    def inside_workspace(path: str) -> bool:
+        if not ws:
+            return False
+        rp = os.path.realpath(path)
+        return rp == ws or rp.startswith(ws + os.sep)
+
+    candidates: list[tuple[str, str]] = []
+    if explicit:
+        candidates.append((explicit, "explicit argument"))
+    env = os.environ.get("DAVER_ALLOWED_SIGNERS")
+    if env:
+        candidates.append((env, "DAVER_ALLOWED_SIGNERS"))
+    candidates.extend((p, "operator config") for p in OPERATOR_ANCHORS)
+
+    refused = []
+    for path, origin in candidates:
+        if inside_workspace(path):
+            refused.append(f"{path} ({origin}) is inside the workspace under examination")
+            continue
+        if os.path.isfile(path):
+            return path, origin
+    if refused:
+        return None, ("refusing to trust an allowed_signers file inside the audited "
+                      "workspace: " + "; ".join(refused) + ". Keep the trust anchor in "
+                      "operator space (~/.config/daver/allowed_signers) or commit it to "
+                      "your own repository.")
+    return None, (f"no allowed_signers file found. Looked in: "
+                  f"{', '.join(p for p, _ in candidates)}")
+
+
 # --- signatures ------------------------------------------------------------
+
+SUBJECT_VERSION = 2
+
 
 def signature_subject(cycle: dict, subject: str) -> dict:
     """The exact material a signature covers.
@@ -87,23 +148,42 @@ def signature_subject(cycle: dict, subject: str) -> dict:
     Deliberately includes the EVIDENCE, not just the decision. Signing "approved"
     alone would let the evidence change afterwards while the approval still looked
     valid. The signer is attesting to a decision on a specific body of measurement.
+
+    Version 2 (1.1.1) signs DIGESTS OF WHOLE SUB-DOCUMENTS rather than summaries.
+    Version 1 took only len(bypasses) and a list of exception ids, so a signed
+    cycle could be materially rewritten while the signature stayed valid: bypass
+    dispositions flipped, exception scope and expiry changed, control enforcement
+    modes altered, and the entire audit log deleted.
+
+    It also pins the audit chain head. The threat model documents that an agent
+    can tamper and re-chain; a human signature over the head is exactly the
+    external anchor the chain otherwise lacks.
     """
     if subject not in SIGNED_SUBJECTS:
         raise KeyError(f"unknown subject '{subject}'. Known: {sorted(SIGNED_SUBJECTS)}")
     brief = cycle.get("definition_brief") or {}
     vp = cycle.get("validation_plan") or {}
+    audit = verify_audit(cycle)
     return {
+        "subject_version": SUBJECT_VERSION,
         "cycle_id": cycle.get("cycle_id"),
         "spec_version": cycle.get("spec_version"),
+        "adapter": cycle.get("adapter"),
         "subject": subject,
         "accountable": ((brief.get("raci") or {}).get("accountable") or {}).get("identity"),
         "guardrails": brief.get("guardrails"),
         "triage_track": (brief.get("triage") or {}).get("track"),
+        "critical_flows": digest(brief.get("asset", {}).get("critical_flows")),
+        "threat_scenarios": digest(brief.get("threat_scenarios")),
         "measured": vp.get("measured"),
         "baseline": vp.get("baseline"),
         "shadow": {k: vp.get("shadow", {}).get(k) for k in ("start", "end", "mode", "duration_days")},
-        "evasion_bypass_count": len((vp.get("evasion_analysis") or {}).get("bypasses") or []),
-        "exception_ids": [e.get("id") for e in (cycle.get("exception_register") or {}).get("exceptions", [])],
+        "evasion_analysis": digest(vp.get("evasion_analysis")),
+        "exception_register": digest(cycle.get("exception_register")),
+        "control_matrix": digest(cycle.get("control_matrix")),
+        "execution_rollout": digest((cycle.get("execution") or {}).get("rollout_stages")),
+        "audit_head": audit.get("head") if audit.get("ok") else "UNCHAINED",
+        "audit_entries": len(cycle.get("audit") or []),
     }
 
 
@@ -136,7 +216,8 @@ def sign_request(cycle: dict, subject: str, key_hint: str = "~/.ssh/id_ed25519")
     }
 
 
-def verify_signature(cycle: dict, subject: str, allowed_signers: str | None = None) -> dict:
+def verify_signature(cycle: dict, subject: str, allowed_signers: str | None = None,
+                     workspace: str | None = None) -> dict:
     """Verify a detached signature over the canonical digest, via ssh-keygen -Y verify."""
     node = cycle
     for k in SIGNED_SUBJECTS[subject]:
@@ -154,11 +235,10 @@ def verify_signature(cycle: dict, subject: str, allowed_signers: str | None = No
     if not signer:
         return {"ok": False, "subject": subject,
                 "detail": "signature block names no signer identity"}
-    allowed = allowed_signers or os.environ.get(
-        "DAVER_ALLOWED_SIGNERS",
-        os.path.join(os.environ.get("DAVER_EVIDENCE_ROOT", os.getcwd()), ".daver", "allowed_signers"))
-    if not os.path.isfile(allowed):
-        return {"ok": False, "subject": subject, "detail": f"no allowed_signers file at {allowed}"}
+
+    allowed, why = resolve_trust_anchor(allowed_signers, workspace)
+    if allowed is None:
+        return {"ok": False, "subject": subject, "detail": why}
 
     d = signature_digest(cycle, subject)
     with tempfile.TemporaryDirectory() as td:
@@ -181,13 +261,14 @@ def verify_signature(cycle: dict, subject: str, allowed_signers: str | None = No
             "detail": (out.stderr or out.stdout).strip()[:300]}
 
 
-def verify_all_signatures(cycle: dict, allowed_signers: str | None = None) -> dict:
+def verify_all_signatures(cycle: dict, allowed_signers: str | None = None,
+                          workspace: str | None = None) -> dict:
     results = {}
     for subject, path in SIGNED_SUBJECTS.items():
         node = cycle
         for k in path:
             node = (node or {}).get(k) or {}
         if node:
-            results[subject] = verify_signature(cycle, subject, allowed_signers)
+            results[subject] = verify_signature(cycle, subject, allowed_signers, workspace)
     return {"ok": all(r.get("ok") for r in results.values()) if results else False,
             "subjects": results or "no signature blocks present"}
