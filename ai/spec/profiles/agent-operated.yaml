@@ -1,0 +1,13 @@
+id: agent-operated
+name: Agent-operated
+description: >
+  Use this the moment an agent participates in the cycle. It promotes the two gates
+  that convert agent good behaviour from a promise into a verifiable fact: the audit
+  chain and cryptographic signatures.
+
+  If an agent is drafting your artifacts and a human is signing off on its work, and
+  you are not running at least this profile, you are trusting a language model's
+  self-report on the one question that matters most.
+severity_overrides:
+  X-1: blocking
+  X-2: blocking

@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://daver.dev/spec/1.0.0/control-matrix.schema.json",
+  "title": "DAVE+R Control Matrix",
+  "type": "object",
+  "required": ["system", "trust_boundary", "controls"],
+  "properties": {
+    "system": { "type": "string" },
+    "last_updated": { "type": "string", "format": "date" },
+
+    "trust_boundary": {
+      "type": "object",
+      "required": ["zones", "flows"],
+      "properties": {
+        "zones": { "type": "array", "minItems": 2, "items": { "type": "string" } },
+        "flows": {
+          "type": "array", "minItems": 1,
+          "items": {
+            "type": "object", "required": ["from", "to"],
+            "properties": {
+              "from": { "type": "string" }, "to": { "type": "string" },
+              "authenticated": { "type": "boolean" },
+              "data_sensitivity": { "enum": ["public", "internal", "confidential", "regulated"] }
+            }
+          }
+        },
+        "diagram": { "type": "string", "description": "Relative path to a committed asset. External URLs fail gate A-6." }
+      }
+    },
+
+    "controls": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "intent", "plane", "owner", "telemetry", "rollback", "addresses"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[A-Z]{2,4}-[A-Z0-9]{2,4}-[0-9]{2}$", "examples": ["WAF-RL-01", "BOT-CH-02"] },
+          "intent": { "type": "string" },
+          "plane": { "$ref": "common.schema.json#/$defs/plane" },
+          "owner": { "$ref": "common.schema.json#/$defs/human" },
+
+          "addresses": {
+            "type": "array", "minItems": 1,
+            "description": "Threat scenario IDs from the Definition Brief. A control that traces to no declared threat fails gate A-2.",
+            "items": { "type": "string", "pattern": "^THR-[0-9]{3}$" }
+          },
+
+          "telemetry": {
+            "type": "object",
+            "required": ["source", "metrics"],
+            "properties": {
+              "source": { "$ref": "common.schema.json#/$defs/source" },
+              "metrics": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+              "alert_routing": { "type": "string" }
+            }
+          },
+
+          "rollback": {
+            "type": "object",
+            "required": ["procedure", "granularity", "target_seconds", "degraded_posture"],
+            "properties": {
+              "procedure": { "type": "string" },
+              "granularity": {
+                "enum": ["global", "segment", "rule", "graduated"],
+                "description": "Added in spec 1.0.0. 'global' on a multi-tenant control is a large blast radius for a problem that may need one exemption. 'graduated' means block -> challenge -> log."
+              },
+              "target_seconds": { "type": "integer", "minimum": 1 },
+              "degraded_posture": {
+                "type": "string",
+                "description": "Added in spec 1.0.0. Rollback restores availability AND restores the abuse. What protects the asset while rolled back? 'Nothing' is a valid answer but must be written down."
+              },
+              "tested": { "$ref": "common.schema.json#/$defs/value" }
+            }
+          },
+
+          "enforcement_mode": { "enum": ["log", "shadow", "challenge", "block", "graduated"] },
+          "parameters": { "type": "object", "additionalProperties": true }
+        }
+      }
+    },
+
+    "policy_tiers": {
+      "type": "object",
+      "properties": {
+        "baseline": { "type": "array", "items": { "type": "string" } },
+        "overlays": { "type": "array", "items": { "type": "object", "properties": { "name": { "type": "string" }, "applies_to": { "type": "string" }, "controls": { "type": "array", "items": { "type": "string" } } } } }
+      }
+    }
+  }
+}

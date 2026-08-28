@@ -1,0 +1,61 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 260" width="900" height="260" role="img"
+     aria-label="The DAVE+R lifecycle: a Triage gate feeds Define, Architect, Validate, Execute and Refine in sequence, and Refine feeds back into Define.">
+  <rect width="900" height="260" rx="10" fill="#f8fafc" stroke="#cbd5e1"/>
+  <g font-family="ui-sans-serif,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">
+    <g>
+      <rect x="24" y="76" width="104" height="72" rx="8" fill="#fff" stroke="#94a3b8" stroke-dasharray="5 4"/>
+      <text x="76" y="104" text-anchor="middle" font-size="15" font-weight="700" fill="#334155">Triage</text>
+      <text x="76" y="124" text-anchor="middle" font-size="11" fill="#64748b">how deep,</text>
+      <text x="76" y="138" text-anchor="middle" font-size="11" fill="#64748b">how fast</text>
+    </g>
+    <path d="M132 112 h22" stroke="#94a3b8" stroke-width="2" marker-end="url(#a)"/>
+    <g>
+      <rect x="160" y="76" width="128" height="72" rx="8" fill="#fff" stroke="#0ea5e9" stroke-width="2"/>
+      <text x="224" y="106" text-anchor="middle" font-size="16" font-weight="700" fill="#0369a1">Define</text>
+      <text x="224" y="128" text-anchor="middle" font-size="11" fill="#64748b">scope, guardrails,</text>
+      <text x="224" y="141" text-anchor="middle" font-size="11" fill="#64748b">baseline</text>
+    </g>
+    <path d="M292 112 h20" stroke="#94a3b8" stroke-width="2" marker-end="url(#a)"/>
+    <g>
+      <rect x="316" y="76" width="128" height="72" rx="8" fill="#fff" stroke="#0ea5e9" stroke-width="2"/>
+      <text x="380" y="106" text-anchor="middle" font-size="16" font-weight="700" fill="#0369a1">Architect</text>
+      <text x="380" y="128" text-anchor="middle" font-size="11" fill="#64748b">planes, telemetry,</text>
+      <text x="380" y="141" text-anchor="middle" font-size="11" fill="#64748b">rollback</text>
+    </g>
+    <path d="M448 112 h20" stroke="#94a3b8" stroke-width="2" marker-end="url(#a)"/>
+    <g>
+      <rect x="472" y="76" width="128" height="72" rx="8" fill="#fff" stroke="#0ea5e9" stroke-width="2"/>
+      <text x="536" y="106" text-anchor="middle" font-size="16" font-weight="700" fill="#0369a1">Validate</text>
+      <text x="536" y="128" text-anchor="middle" font-size="11" fill="#64748b">shadow, evasion,</text>
+      <text x="536" y="141" text-anchor="middle" font-size="11" fill="#64748b">earn enforcement</text>
+    </g>
+    <path d="M604 112 h20" stroke="#94a3b8" stroke-width="2" marker-end="url(#a)"/>
+    <g>
+      <rect x="628" y="76" width="120" height="72" rx="8" fill="#fff" stroke="#0ea5e9" stroke-width="2"/>
+      <text x="688" y="106" text-anchor="middle" font-size="16" font-weight="700" fill="#0369a1">Execute</text>
+      <text x="688" y="128" text-anchor="middle" font-size="11" fill="#64748b">staged, abortable,</text>
+      <text x="688" y="141" text-anchor="middle" font-size="11" fill="#64748b">authorized</text>
+    </g>
+    <path d="M752 112 h16" stroke="#94a3b8" stroke-width="2" marker-end="url(#a)"/>
+    <g>
+      <rect x="772" y="76" width="104" height="72" rx="8" fill="#fff" stroke="#0ea5e9" stroke-width="2"/>
+      <text x="824" y="106" text-anchor="middle" font-size="16" font-weight="700" fill="#0369a1">Refine</text>
+      <text x="824" y="128" text-anchor="middle" font-size="11" fill="#64748b">sweep, drift,</text>
+      <text x="824" y="141" text-anchor="middle" font-size="11" fill="#64748b">simplify</text>
+    </g>
+    <path d="M824 152 v40 q0 12 -12 12 H236 q-12 0 -12 -12 v-40"
+          fill="none" stroke="#94a3b8" stroke-width="2" stroke-dasharray="6 5" marker-end="url(#a)"/>
+    <text x="530" y="222" text-anchor="middle" font-size="12" fill="#64748b" font-style="italic">
+      evidence from production becomes the next cycle's Define
+    </text>
+    <text x="450" y="40" text-anchor="middle" font-size="17" font-weight="700" fill="#0f172a">The DAVE+R lifecycle</text>
+    <text x="450" y="58" text-anchor="middle" font-size="11.5" fill="#64748b">
+      each stage has required outputs and exit criteria; depth scales with risk, stages do not get skipped
+    </text>
+  </g>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#94a3b8"/>
+    </marker>
+  </defs>
+</svg>

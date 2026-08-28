@@ -1,0 +1,114 @@
+stage: architect
+description: >
+  Design a control system that can be operated safely. Exit means every control
+  has an owner, telemetry and a rollback, traces to a declared threat, and the
+  team has decided what protects the asset while rolled back.
+
+gates:
+  - id: A-1
+    name: every-control-complete
+    severity: blocking
+    rationale: The framework's own minimum. A control missing any of these cannot be operated, only deployed.
+    assert:
+      all:
+        - min_items: [control_matrix.controls, 1]
+        - each:
+            in: control_matrix.controls
+            satisfies:
+              all:
+                - exists: item.owner.identity
+                - exists: item.telemetry.source
+                - min_items: [item.telemetry.metrics, 1]
+                - exists: item.rollback.procedure
+    remediation: Give every control a named owner, a resolvable telemetry source with at least one metric, and a rollback procedure.
+
+  - id: A-2
+    name: controls-trace-to-threats
+    severity: blocking
+    rationale: >
+      A control that addresses no declared threat is either solving a problem nobody wrote
+      down or is cargo cult. This is the cross-artifact check a human reviewer never does
+      reliably and an agent does in milliseconds.
+    assert:
+      each:
+        in: control_matrix.controls
+        satisfies:
+          all:
+            - min_items: [item.addresses, 1]
+            - refs_resolve: [item.addresses, definition_brief.threat_scenarios, id]
+    remediation: Point each control at the threat scenario IDs it mitigates. Add the threat to the brief, or drop the control.
+
+  - id: A-3
+    name: rollback-granularity-declared
+    severity: blocking
+    added_in: 1.0.0
+    rationale: >
+      Rollback was always described as disabling the control. The scraping scenario rolls
+      back a global Terraform toggle in 45 seconds for a problem that only needed one partner
+      exempted. Granularity makes blast radius an explicit design decision.
+    assert:
+      each:
+        in: control_matrix.controls
+        satisfies:
+          all:
+            - exists: item.rollback.granularity
+            - exists: item.rollback.target_seconds
+    remediation: State whether rollback is global, per-segment, per-rule, or graduated (block -> challenge -> log), and the target time.
+
+  - id: A-4
+    name: degraded-posture-declared
+    severity: blocking
+    added_in: 1.0.0
+    rationale: >
+      Rollback restores availability and simultaneously restores the abuse. The attack does
+      not pause while you are rolled back. "Nothing protects us" is an acceptable answer;
+      not having thought about it is not.
+    assert:
+      each:
+        in: control_matrix.controls
+        satisfies: { exists: item.rollback.degraded_posture }
+    remediation: For each control, state what protects the asset during the rollback window.
+
+  - id: A-5
+    name: telemetry-is-resolvable
+    severity: blocking
+    rationale: >
+      "Datadog" is not a telemetry source. A gate later has to read this value and prove a
+      number came from somewhere re-runnable.
+    assert:
+      each:
+        in: control_matrix.controls
+        satisfies:
+          all:
+            - exists: item.telemetry.source.system
+            - exists: item.telemetry.source.ref
+    remediation: Record the system plus the query, dashboard ID or API path. It must be re-runnable by someone else.
+
+  - id: A-6
+    name: trust-boundary-documented
+    severity: blocking
+    rationale: >
+      Enforcement plane decisions are only defensible against a stated boundary map.
+      Diagrams must be committed assets, not external attachment URLs, or a fork of a
+      CC BY licensed framework inherits broken images and unversioned evidence.
+    assert:
+      all:
+        - min_items: [control_matrix.trust_boundary.zones, 2]
+        - min_items: [control_matrix.trust_boundary.flows, 1]
+        - implies:
+            - exists: control_matrix.trust_boundary.diagram
+            - not: { matches: [control_matrix.trust_boundary.diagram, "^https?://"] }
+    remediation: Document zones and flows. Commit any diagram into the repo and reference it relatively.
+
+  - id: A-7
+    name: incremental-rollout-supported
+    severity: advisory
+    rationale: A control that can only ship globally cannot be canaried, which forecloses the Execute stage's core discipline.
+    assert:
+      each:
+        in: control_matrix.controls
+        satisfies:
+          any:
+            - in: [item.rollback.granularity, [segment, rule, graduated]]
+            - eq: [item.enforcement_mode, graduated]
+    remediation: Prefer controls that can be scoped to a segment or stepped down to challenge, rather than binary global toggles.

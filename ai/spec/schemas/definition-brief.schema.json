@@ -1,0 +1,145 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://daver.dev/spec/1.0.0/definition-brief.schema.json",
+  "title": "DAVE+R Definition Brief",
+  "type": "object",
+  "required": ["name", "status", "asset", "threat_scenarios", "guardrails", "success_metrics", "non_goals", "raci", "triage", "alternatives_considered"],
+  "properties": {
+    "name": { "type": "string" },
+    "date": { "type": "string", "format": "date" },
+    "status": { "enum": ["draft", "approved", "active", "closed"] },
+
+    "asset": {
+      "type": "object",
+      "required": ["target", "traffic_scope", "critical_flows"],
+      "properties": {
+        "target": { "type": "string", "description": "Concrete. A host, path, API, or resource id." },
+        "traffic_scope": { "type": "string" },
+        "critical_flows": {
+          "type": "array", "minItems": 1,
+          "description": "Flows that must not break. Enumerated here so Validate can test them explicitly.",
+          "items": {
+            "type": "object", "required": ["id", "description"],
+            "properties": {
+              "id": { "type": "string" },
+              "description": { "type": "string" },
+              "business_impact_if_broken": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+
+    "threat_scenarios": {
+      "type": "array", "minItems": 1,
+      "description": "Concrete behaviours with observable signatures. Abstract threats ('bots', 'attackers') fail gate D-2.",
+      "items": {
+        "type": "object",
+        "required": ["id", "behaviour", "observable_signature"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^THR-[0-9]{3}$" },
+          "behaviour": { "type": "string" },
+          "observable_signature": {
+            "type": "string",
+            "description": "How this shows up in telemetry. If you cannot name the signal, you cannot validate the control."
+          },
+          "active_now": { "$ref": "common.schema.json#/$defs/value" },
+          "observed_harm": { "$ref": "common.schema.json#/$defs/value" }
+        }
+      }
+    },
+
+    "guardrails": {
+      "type": "object",
+      "description": "What must not break, with numbers. Prose guardrails are unenforceable.",
+      "required": ["false_positive_tolerance", "latency_budget_ms"],
+      "properties": {
+        "false_positive_tolerance": {
+          "allOf": [{ "$ref": "common.schema.json#/$defs/value" }],
+          "description": "Fraction, e.g. 0.001. Absolute zero is not a valid tolerance for a statistical control (gate D-3)."
+        },
+        "latency_budget_ms": { "$ref": "common.schema.json#/$defs/value" },
+        "percentile": { "type": "string", "default": "p95" },
+        "business_guardrails": {
+          "type": "array",
+          "items": {
+            "type": "object", "required": ["statement", "measured_by"],
+            "properties": {
+              "statement": { "type": "string" },
+              "measured_by": { "$ref": "common.schema.json#/$defs/source" }
+            }
+          }
+        }
+      }
+    },
+
+    "success_metrics": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "statement", "baseline", "target"],
+        "properties": {
+          "id": { "type": "string" },
+          "statement": { "type": "string" },
+          "baseline": {
+            "allOf": [{ "$ref": "common.schema.json#/$defs/value" }],
+            "description": "Measured BEFORE shadow mode. Gate V-1 rejects a cycle with no pre-change baseline."
+          },
+          "target": { "$ref": "common.schema.json#/$defs/value" },
+          "measured_by": { "$ref": "common.schema.json#/$defs/source" }
+        }
+      }
+    },
+
+    "non_goals": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+
+    "triage": {
+      "type": "object",
+      "description": "Added in spec 1.0.0. Closes the gap where the lifecycle had no path for an attack already causing damage.",
+      "required": ["track", "justification", "harm_accruing"],
+      "properties": {
+        "track": { "$ref": "common.schema.json#/$defs/triage_track" },
+        "justification": { "$ref": "common.schema.json#/$defs/value" },
+        "harm_accruing": {
+          "allOf": [{ "$ref": "common.schema.json#/$defs/value" }],
+          "description": "Is damage occurring right now? If true and track=planned, gate D-6 blocks: you are choosing to absorb ongoing loss and that must be an explicit, signed decision."
+        },
+        "harm_rate": {
+          "allOf": [{ "$ref": "common.schema.json#/$defs/value" }],
+          "description": "Cost per day of NOT acting. Makes the shadow-duration tradeoff explicit rather than implicit."
+        },
+        "accepted_by": { "$ref": "common.schema.json#/$defs/signature" }
+      }
+    },
+
+    "alternatives_considered": {
+      "type": "array", "minItems": 1,
+      "description": "Added in spec 1.0.0. Stage zero: is a control the right response, or should the root cause be fixed? Prevents the framework nudging every problem toward the edge.",
+      "items": {
+        "type": "object",
+        "required": ["option", "plane", "rejected_because"],
+        "properties": {
+          "option": { "type": "string", "examples": ["Cache the endpoint at edge", "Require authentication", "Per-key quota at API gateway"] },
+          "plane": { "$ref": "common.schema.json#/$defs/plane" },
+          "rejected_because": { "type": "string" },
+          "addresses_root_cause": { "type": "boolean" }
+        }
+      }
+    },
+
+    "raci": {
+      "type": "object",
+      "required": ["accountable", "responsible"],
+      "properties": {
+        "accountable": {
+          "allOf": [{ "$ref": "common.schema.json#/$defs/human" }],
+          "description": "One named person who owns the risk. A team name fails gate D-5."
+        },
+        "responsible": { "type": "array", "items": { "$ref": "common.schema.json#/$defs/human" } },
+        "consulted": { "type": "array", "items": { "type": "string" } },
+        "informed": { "type": "array", "items": { "type": "string" } },
+        "escalation_path": { "type": "string" }
+      }
+    }
+  }
+}

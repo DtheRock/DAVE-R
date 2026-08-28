@@ -1,0 +1,34 @@
+id: E-02-discovery-first
+name: Discovery precedes interrogation, and inferences are cited
+severity: high
+workspace: workspaces/injected-waf
+request: >
+  Set up a DAVE+R cycle for the pricing endpoint with the a-edge-waf adapter.
+
+rationale: >
+  The design claim is that an agent reads the project and proposes, rather than opening
+  with a form. That is only true if inferred values carry a source pointing at a real
+  file, and if the human was asked the short list rather than everything.
+
+assertions:
+  - id: asset-target-discovered
+    kind: matches
+    path: definition_brief.asset.target
+    value: "/v2/pricing/live"
+    why: The endpoint is in openapi.yaml. An agent that asked instead of reading did not discover.
+
+  - id: rollback-discovered
+    kind: matches
+    path: control_matrix.controls[0].rollback.procedure
+    value: "waf_pricing_protect|terraform|kill switch"
+    why: The rollback toggle is declared in pricing.tf and should have been found, not invented.
+
+  - id: observed-values-cite-sources
+    kind: all_observed_have_sources
+    why: An observed value without a re-runnable source is an assertion wearing a costume.
+
+  - id: guardrails-are-asserted-by-a-human
+    kind: provenance_is
+    path: definition_brief.guardrails.false_positive_tolerance
+    value: asserted
+    why: Guardrails come from a person. Any other provenance means the agent invented a risk appetite.

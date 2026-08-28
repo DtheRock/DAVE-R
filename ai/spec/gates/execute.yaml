@@ -1,0 +1,100 @@
+stage: execute
+description: >
+  Deploy with governance, not heroics. Every gate here is about making the change
+  reversible, observable and attributable to a human decision.
+
+gates:
+  - id: E-1
+    name: staged-rollout-with-abort-criteria
+    severity: blocking
+    rationale: A rollout stage with no abort criterion is not staged, it is just slow. The abort trigger must be decided before the pressure starts.
+    assert:
+      all:
+        - min_items: [execution.rollout_stages, 2]
+        - each:
+            in: execution.rollout_stages
+            satisfies:
+              all:
+                - exists: item.scope
+                - exists: item.abort_criteria
+    remediation: Define at least two rollout stages, each with the scope and the metric threshold that halts the rollout.
+
+  - id: E-2
+    name: observability-live-before-enforcement
+    severity: blocking
+    requires_evidence: true
+    rationale: >
+      Enforcing before dashboards and alert routing exist means the first signal of a problem
+      is a customer. Evidence typing matters here: an agent asserting "dashboards are live"
+      is worthless, an agent that queried the dashboard API is not.
+    assert:
+      all:
+        - provenance_in: [execution.dashboards_live, [observed, derived]]
+        - eq: [execution.dashboards_live, true]
+        - provenance_in: [execution.alert_routing_live, [observed, derived]]
+        - eq: [execution.alert_routing_live, true]
+    remediation: Confirm dashboards render and alerts route to a live destination, by querying them, before flipping enforcement.
+
+  - id: E-3
+    name: runbook-published
+    severity: blocking
+    rationale: The safe-disable path has to be findable by someone who was not in this cycle, at 3am.
+    assert:
+      exists: execution.runbook
+    remediation: Publish a runbook including the safe-disable path and link it here.
+
+  - id: E-4
+    name: change-record-linked
+    severity: blocking
+    rationale: Auditability end to end is the framework's claim. A change with no record breaks the chain.
+    assert:
+      exists: execution.change_record
+    remediation: Link the change record, PR or ticket that carries this cycle into production.
+
+  - id: E-5
+    name: rollback-rehearsed
+    severity: blocking
+    requires_evidence: true
+    rationale: >
+      V-6 tested that rollback works. E-5 tests that the people on call have done it recently
+      enough to do it under pressure. These are different failures.
+    assert:
+      all:
+        - provenance_in: [execution.rollback_rehearsed, [observed, derived]]
+        - eq: [execution.rollback_rehearsed, true]
+    remediation: Rehearse the rollback with the on-call rotation and record the result.
+
+  - id: E-6
+    name: enforcement-authorized-by-human
+    severity: blocking
+    rationale: >
+      The hard stop. An agent may prepare everything in this artifact. Flipping enforcement
+      is a risk-acceptance act reserved to the accountable human, and the signature is
+      structurally pinned so an agent cannot author it.
+    assert:
+      all:
+        - exists: execution.enforcement_authorization.by.identity
+        - eq: [execution.enforcement_authorization.authored_by_agent, false]
+        - same: [execution.enforcement_authorization.by.identity, definition_brief.raci.accountable.identity]
+        - eq: [execution.enforcement_authorization.decision, approved]
+    remediation: The accountable owner must authorize enforcement personally. No agent may write this field.
+
+  - id: E-7
+    name: emergency-changes-backfilled
+    severity: blocking
+    added_in: 1.0.0
+    rationale: >
+      Module D said emergency changes are documented post-hoc and folded back into the governed
+      path, in one line, with no mechanism. This gate is that mechanism: an emergency cycle
+      cannot close until it has been backfilled to the standard of a planned one.
+    assert:
+      implies:
+        - eq: [definition_brief.triage.track, emergency]
+        - all:
+            - exists: validation_plan.baseline.false_positive_rate
+            - exists: validation_plan.evasion_analysis.bypasses
+            - exists: execution.change_record
+    remediation: >
+      Emergency track buys you a shortened shadow window, not an exemption from evidence.
+      Backfill the baseline, evasion analysis and change record within the adapter's
+      backfill window.

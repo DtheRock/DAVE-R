@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://daver.dev/spec/1.0.0/exception-register.schema.json",
+  "title": "DAVE+R Exception Register",
+  "type": "object",
+  "required": ["exceptions"],
+  "properties": {
+    "exceptions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "scope", "mechanism", "rationale", "approver", "expiry", "expiry_action", "review_cadence", "compensating_control", "blast_radius", "reduction_plan", "applies_to"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^EXC-[0-9]{3}$" },
+
+          "applies_to": {
+            "type": "array", "minItems": 1,
+            "description": "Control IDs this exception bypasses. An exception referencing no live control fails gate V-7.",
+            "items": { "type": "string" }
+          },
+
+          "scope": { "type": "string" },
+
+          "mechanism": {
+            "type": "object",
+            "required": ["kind"],
+            "description": "Added in spec 1.0.0. The bypass mechanism is itself an attack surface. Strength order is enforced by gate X-1.",
+            "properties": {
+              "kind": {
+                "enum": ["cryptographic-identity", "mtls", "signed-header", "api-key", "ip", "asn", "user-agent", "path"],
+                "description": "Preference order, strongest first. 'ip', 'asn', 'user-agent' and 'path' are spoofable or over-broad and require justification plus a shortened expiry."
+              },
+              "detail": { "type": "string" },
+              "host_count_estimate": {
+                "allOf": [{ "$ref": "common.schema.json#/$defs/value" }],
+                "description": "For asn/ip-range bypasses: how many hosts does this actually trust? An ASN can hold thousands."
+              },
+              "weak_mechanism_justification": { "type": "string" }
+            }
+          },
+
+          "rationale": { "type": "string" },
+          "approver": { "$ref": "common.schema.json#/$defs/signature" },
+
+          "compensating_control": {
+            "type": "object",
+            "required": ["description", "telemetry"],
+            "description": "Added in spec 1.0.0. What covers the risk while this exception is live? The original register had no such field, which is how a 12-month WAF bypass on an unauthenticated webhook path gets approved without anyone noticing.",
+            "properties": {
+              "description": { "type": "string" },
+              "telemetry": { "$ref": "common.schema.json#/$defs/source" },
+              "none_because": { "type": "string", "description": "If genuinely no compensating control exists, say so explicitly. Silence is not permitted." }
+            }
+          },
+
+          "blast_radius": {
+            "type": "object",
+            "required": ["description", "severity"],
+            "description": "Added in spec 1.0.0. What is reachable if this exception is abused or the bypassed party is compromised?",
+            "properties": {
+              "description": { "type": "string" },
+              "severity": { "enum": ["low", "medium", "high", "critical"] },
+              "unauthenticated": { "type": "boolean" },
+              "data_reachable": { "enum": ["none", "public", "internal", "confidential", "regulated"] }
+            }
+          },
+
+          "created": { "type": "string", "format": "date" },
+          "expiry": { "type": "string", "format": "date" },
+
+          "expiry_action": {
+            "enum": ["auto-revoke", "escalate", "block-change", "review-required"],
+            "description": "Added in spec 1.0.0. Undefined expiry behaviour is how every register drifts into permanent exceptions. 'auto-extend' is deliberately not an option."
+          },
+
+          "review_cadence": { "enum": ["weekly", "monthly", "quarterly"] },
+          "reduction_plan": { "type": "string" },
+          "usage": {
+            "allOf": [{ "$ref": "common.schema.json#/$defs/value" }],
+            "description": "Observed hit count. An exception with zero usage is dead weight; retire it."
+          },
+          "status": { "enum": ["active", "expired", "retired", "overdue"] }
+        }
+      }
+    }
+  }
+}

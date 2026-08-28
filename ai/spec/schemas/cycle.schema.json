@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://daver.dev/spec/1.0.0/cycle.schema.json",
+  "title": "DAVE+R Cycle",
+  "description": "The container that binds one full lifecycle run. Artifacts cross-reference by ID, which is what makes the chain machine-checkable.",
+  "type": "object",
+  "required": ["spec_version", "cycle_id", "adapter", "stage", "definition_brief"],
+  "properties": {
+    "spec_version": { "type": "string", "const": "1.0.0" },
+    "cycle_id": { "type": "string" },
+    "adapter": { "type": "string", "examples": ["a-edge-waf", "b-cloud-posture", "c-bot-fraud", "d-governance-delivery"] },
+    "stage": { "enum": ["define", "architect", "validate", "execute", "refine", "closed"] },
+
+    "definition_brief": { "$ref": "definition-brief.schema.json" },
+    "control_matrix": { "$ref": "control-matrix.schema.json" },
+    "validation_plan": { "$ref": "validation-plan.schema.json" },
+    "exception_register": { "$ref": "exception-register.schema.json" },
+    "refinement_log": { "$ref": "refinement-log.schema.json" },
+
+    "execution": {
+      "type": "object",
+      "properties": {
+        "change_record": { "type": "string" },
+        "rollout_stages": {
+          "type": "array", "minItems": 1,
+          "items": {
+            "type": "object", "required": ["name", "scope", "abort_criteria"],
+            "properties": {
+              "name": { "type": "string", "examples": ["canary", "segment", "region", "full"] },
+              "scope": { "type": "string" },
+              "abort_criteria": { "type": "string", "description": "Gate E-1: a rollout stage with no abort criterion is not staged, it is just slow." },
+              "started": { "type": "string", "format": "date-time" },
+              "completed": { "type": "string", "format": "date-time" },
+              "aborted": { "type": "boolean" }
+            }
+          }
+        },
+        "dashboards_live": { "$ref": "common.schema.json#/$defs/value" },
+        "alert_routing_live": { "$ref": "common.schema.json#/$defs/value" },
+        "runbook": { "type": "string" },
+        "rollback_rehearsed": { "$ref": "common.schema.json#/$defs/value" },
+        "enforcement_authorization": {
+          "allOf": [{ "$ref": "common.schema.json#/$defs/signature" }],
+          "description": "Gate E-6. An agent may draft everything else in this artifact. It may never author this."
+        }
+      }
+    },
+
+    "module": {
+      "type": "object",
+      "description": "Adapter-specific payload. Validated against the adapter's own schema fragment.",
+      "additionalProperties": true
+    },
+
+    "audit": {
+      "type": "array",
+      "description": "Append-only. Every agent action and every gate run is recorded here.",
+      "items": {
+        "type": "object", "required": ["at", "actor", "action"],
+        "properties": {
+          "at": { "type": "string", "format": "date-time" },
+          "actor": { "type": "string", "description": "'agent:<name>' or a human identity." },
+          "action": { "type": "string" },
+          "detail": { "type": "string" },
+          "gate_run": { "type": "object", "additionalProperties": true }
+        }
+      }
+    }
+  }
+}

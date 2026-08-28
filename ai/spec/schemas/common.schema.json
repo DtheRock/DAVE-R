@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://daver.dev/spec/1.0.0/common.schema.json",
+  "title": "DAVE+R common definitions",
+  "$defs": {
+    "provenance": {
+      "enum": ["asserted", "observed", "derived", "unmeasured"]
+    },
+    "value": {
+      "type": "object",
+      "description": "An evidence-typed value. See spec/evidence.md (normative).",
+      "required": ["provenance"],
+      "properties": {
+        "value": {},
+        "unit": { "type": "string" },
+        "provenance": { "$ref": "#/$defs/provenance" },
+        "asserted_by": { "type": "string", "description": "Resolvable human identity. Required when provenance=asserted." },
+        "asserted_at": { "type": "string", "format": "date-time" },
+        "source": { "$ref": "#/$defs/source" },
+        "observed_at": { "type": "string", "format": "date-time" },
+        "derived_from": { "type": "array", "items": { "type": "string" }, "description": "Dotted refs to other values in this cycle." },
+        "method": { "type": "string" },
+        "note": { "type": "string" }
+      },
+      "allOf": [
+        { "if": { "properties": { "provenance": { "const": "asserted" } }, "required": ["provenance"] },
+          "then": { "required": ["value", "asserted_by"] } },
+        { "if": { "properties": { "provenance": { "const": "observed" } }, "required": ["provenance"] },
+          "then": { "required": ["value", "source", "observed_at"] } },
+        { "if": { "properties": { "provenance": { "const": "derived" } }, "required": ["provenance"] },
+          "then": { "required": ["value", "derived_from", "method"] } }
+      ]
+    },
+    "source": {
+      "type": "object",
+      "description": "A resolvable pointer to where an observation came from.",
+      "required": ["system", "ref"],
+      "properties": {
+        "system": { "type": "string", "examples": ["datadog", "splunk", "cloudflare", "terraform", "github", "okta"] },
+        "ref": { "type": "string", "description": "Query, dashboard id, file path, or API path. Must be re-runnable." },
+        "window": { "type": "string", "description": "Time window the observation covers, e.g. '7d'." }
+      }
+    },
+    "human": {
+      "type": "object",
+      "required": ["name", "identity"],
+      "properties": {
+        "name": { "type": "string" },
+        "identity": { "type": "string", "description": "Email, SSO subject, or handle. Must resolve to one person, not a team." },
+        "role": { "type": "string" }
+      }
+    },
+    "signature": {
+      "type": "object",
+      "description": "A human decision an agent may never author.",
+      "required": ["decision", "by", "at"],
+      "properties": {
+        "decision": { "enum": ["approved", "rejected", "deferred"] },
+        "by": { "$ref": "#/$defs/human" },
+        "at": { "type": "string", "format": "date-time" },
+        "rationale": { "type": "string" },
+        "authored_by_agent": { "const": false, "description": "Structurally pinned false. An agent writing true is a spec violation." }
+      }
+    },
+    "triage_track": {
+      "enum": ["planned", "expedited", "emergency"],
+      "description": "Set in Define. Governs minimum shadow duration and approval level."
+    },
+    "plane": {
+      "enum": ["edge", "waf", "bot-management", "identity", "network", "application", "data", "ci-cd"]
+    },
+    "ref": {
+      "type": "string",
+      "pattern": "^[a-z_]+(\\.[a-zA-Z0-9_\\[\\]-]+)*$",
+      "description": "Dotted path into the cycle document."
+    }
+  }
+}

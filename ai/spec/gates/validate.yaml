@@ -1,0 +1,191 @@
+stage: validate
+description: >
+  Earn enforcement through proof. This is the stage where evidence typing bites:
+  every measured quantity read here must be observed or derived, never asserted.
+  An agent that cannot measure must block, not estimate.
+
+gates:
+  - id: V-1
+    name: baseline-measured-before-shadow
+    severity: blocking
+    requires_evidence: true
+    added_in: 1.0.0
+    rationale: >
+      The original Validate stage measured false positives during shadow but never required
+      a pre-change baseline. Without one you cannot attribute failures to your control, and
+      the go/no-go decision rests on an unfalsifiable number.
+    assert:
+      all:
+        - provenance_in: [validation_plan.baseline.false_positive_rate, [observed, derived]]
+        - provenance_in: [validation_plan.baseline.latency_ms, [observed, derived]]
+        - before: [validation_plan.baseline.measured_before, validation_plan.shadow.start]
+    remediation: Measure the current false positive and latency profile before shadow mode starts, from a named source.
+
+  - id: V-2
+    name: shadow-duration-sufficient
+    severity: blocking
+    rationale: >
+      Traffic mix differs on weekends, at month end, and during campaigns. A three day
+      shadow on a consumer flow measures one slice of reality. Adapters set the minimum;
+      the expedited and emergency tracks may shorten it, which is exactly why D-6 requires
+      that choice to be signed.
+    assert:
+      all:
+        - provenance_in: [validation_plan.shadow.duration_days, [observed, derived]]
+        - gte: [validation_plan.shadow.duration_days, "$adapter.min_shadow_days"]
+    remediation: Extend shadow mode to the adapter minimum, or change the triage track and have the accountable owner sign for the shortened window.
+
+  - id: V-3
+    name: false-positives-within-tolerance
+    severity: blocking
+    requires_evidence: true
+    rationale: >
+      The framework's central promise. Enforceable only because D-3 forced a numeric
+      tolerance and V-1 forced a baseline.
+    assert:
+      all:
+        - provenance_in: [validation_plan.measured.false_positive_rate, [observed, derived]]
+        - lte: [validation_plan.measured.false_positive_rate, definition_brief.guardrails.false_positive_tolerance]
+    remediation: Tune thresholds or add exceptions until the measured rate is inside the declared budget. Do not widen the budget to fit the result without a signed change to the brief.
+
+  - id: V-4
+    name: critical-flows-individually-measured
+    severity: blocking
+    rationale: >
+      An aggregate false positive rate hides a flow that is completely broken. If login is
+      2 percent of traffic and 100 percent broken, the aggregate looks like 2 percent.
+    assert:
+      each:
+        in: definition_brief.asset.critical_flows
+        satisfies:
+          lookup_exists: [validation_plan.measured.false_positive_rate_by_critical_flow, item.id]
+    remediation: Break the false positive measurement down by each critical flow enumerated in the brief.
+
+  - id: V-5
+    name: latency-within-budget
+    severity: blocking
+    requires_evidence: true
+    assert:
+      all:
+        - provenance_in: [validation_plan.measured.latency_delta_ms, [observed, derived]]
+        - lte: [validation_plan.measured.latency_delta_ms, definition_brief.guardrails.latency_budget_ms]
+    remediation: Measure the processing delta at the declared percentile and bring it inside budget.
+
+  - id: V-6
+    name: rollback-tested
+    severity: blocking
+    requires_evidence: true
+    rationale: An untested rollback is a hope. This is one of the framework's genuinely strong original ideas; the only change is requiring evidence rather than a checkbox.
+    assert:
+      all:
+        - provenance_in: [validation_plan.measured.rollback_tested, [observed, derived]]
+        - eq: [validation_plan.measured.rollback_tested, true]
+    remediation: Actually execute the rollback in a non-production or canary scope and record the result and elapsed time.
+
+  - id: V-7
+    name: evasion-analysis-complete
+    severity: blocking
+    added_in: 1.0.0
+    rationale: >
+      Validate measured false positives, latency and rollback, but never whether the control
+      survives an adversary who adapts. Both published scenarios were then bitten in Refine by
+      evasion that was obvious at design time: scrapers dropping to 290 under a 300 req/min
+      limit, attackers spoofing app tokens with emulators. One design-time question would have
+      caught both.
+    assert:
+      all:
+        - min_items: [validation_plan.evasion_analysis.bypasses, 3]
+        - any:
+            - each_any:
+                in: validation_plan.evasion_analysis.bypasses
+                satisfies: { eq: [item.tested, true] }
+        - each:
+            in: validation_plan.evasion_analysis.bypasses
+            satisfies:
+              all:
+                - exists: item.disposition
+                - implies:
+                    - eq: [item.disposition, accepted]
+                    - exists: item.accepted_by
+    remediation: >
+      Name at least three ways to defeat this control, test at least one, and give every
+      bypass a disposition. An accepted bypass needs a named human signature.
+
+  - id: V-8
+    name: threshold-not-on-a-treadmill
+    severity: advisory
+    added_in: 1.0.0
+    rationale: >
+      If an attacker can operate just under your threshold and still achieve their goal, you
+      have bought time, not a fix. The scraping scenario ratchets 300 to 200 after observing
+      evasion at 290; nothing stops a move to 190. Escalate control class instead of tuning.
+    assert:
+      implies:
+        - exists: validation_plan.evasion_analysis.threshold_evasion_margin
+        - gte: [validation_plan.evasion_analysis.threshold_evasion_margin, 0.25]
+    remediation: >
+      If an attacker retains more than 75 percent of their throughput just under the
+      threshold, consider a different control class (authentication, per-key quota,
+      cost-based challenge) rather than a lower number.
+
+  - id: V-9
+    name: exceptions-governed
+    severity: blocking
+    added_in: 1.0.0
+    rationale: >
+      The original register had no compensating control and no blast radius field, which is how
+      a twelve month WAF bypass on an unauthenticated webhook path gets approved with quarterly
+      review and nobody notices. It also never defined what happens at expiry, which is how
+      every register drifts into permanent exceptions.
+    assert:
+      each:
+        in: exception_register.exceptions
+        satisfies:
+          all:
+            - any:
+                - exists: item.compensating_control.description
+                - exists: item.compensating_control.none_because
+            - exists: item.blast_radius.severity
+            - exists: item.expiry
+            - exists: item.expiry_action
+            - exists: item.approver.by.identity
+            - refs_resolve: [item.applies_to, control_matrix.controls, id]
+    remediation: >
+      Every exception needs a compensating control (or an explicit statement that none exists),
+      a blast radius, an expiry with a defined expiry action, a named approver, and it must
+      reference a control that actually exists.
+
+  - id: V-10
+    name: weak-bypass-mechanisms-justified
+    severity: blocking
+    added_in: 1.0.0
+    rationale: >
+      The bypass mechanism is itself an attack surface. IP allowlists are spoofable where the
+      origin trusts client IP; an ASN can contain thousands of unrelated hosts on shared cloud
+      ranges. The credential-stuffing scenario bypasses an aggregator by ASN without flagging it.
+    assert:
+      each:
+        in: exception_register.exceptions
+        satisfies:
+          implies:
+            - in: [item.mechanism.kind, [ip, asn, user-agent, path]]
+            - all:
+                - exists: item.mechanism.weak_mechanism_justification
+                - lte: [item.expiry, "$now+180d"]
+    remediation: >
+      Prefer cryptographic identity, mTLS or a signed header. If you must use IP, ASN, UA or
+      path, justify it and cap the expiry at 180 days.
+
+  - id: V-11
+    name: go-no-go-signed-by-accountable-owner
+    severity: blocking
+    rationale: >
+      The single most important guardrail for agent operation. An agent may draft, measure,
+      check and recommend. Authorising enforcement is a human act, and the signer must be the
+      person who took accountability in Define.
+    assert:
+      all:
+        - exists: validation_plan.go_no_go.signature.by.identity
+        - eq: [validation_plan.go_no_go.signature.authored_by_agent, false]
+        - same: [validation_plan.go_no_go.signature.by.identity, definition_brief.raci.accountable.identity]
+    remediation: The accountable owner named in the Definition Brief must personally sign the go decision.
