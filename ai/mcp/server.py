@@ -6,13 +6,20 @@ skill are two consumers of ONE spec: every gate executed here is loaded from
 spec/gates/*.yaml at runtime, so the two can never drift apart.
 
 Security posture, deliberate:
-  * The server is READ-ONLY with respect to production. It never reaches a WAF, a
-    cloud API, or a deployment pipeline. It reads and checks documents.
+  * The server executes NO commands. Exec resolvers are never enabled here, and
+    the server refuses to run if the environment tries to turn them on. A tool
+    surface driven by a language model is the last place to accept a
+    config-file-to-subprocess path.
   * It cannot authorize enforcement. There is no tool that writes an approval
     signature. `daver_request_authorization` prepares the artifact a named human
     must sign out-of-band, and says so.
-  * Cycle documents are read from an allowlisted workspace root and path-traversal
-    is rejected, because a cycle path arrives as untrusted tool input.
+  * DAVER_WORKSPACE is ONE boundary, applied everywhere. Cycle paths, resolver
+    file reads and the signature trust anchor are all confined to it. An earlier
+    version confined only the cycle path while the resolver layer read a second
+    variable defaulting to the process cwd, so pinning the documented boundary
+    bought nothing.
+  * Paths resolve through realpath and symlinks are refused, so a link inside the
+    workspace cannot read files outside it.
 """
 from __future__ import annotations
 
@@ -24,16 +31,32 @@ import sys
 from mcp.server.fastmcp import FastMCP
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "engine"))
-from daver import Spec, load_cycle, render  # noqa: E402
+from daver import Spec, load_cycle, render, resolvers  # noqa: E402
 
-WORKSPACE = os.path.abspath(os.environ.get("DAVER_WORKSPACE", os.getcwd()))
-SPEC = Spec(os.environ.get("DAVER_SPEC"))
+WORKSPACE = os.path.realpath(os.environ.get("DAVER_WORKSPACE", os.getcwd()))
+
+# Refuse to start with exec resolvers on. An operator may legitimately enable them
+# for the CLI; over MCP the caller is a language model acting on content it
+# discovered, and that is not a caller we hand subprocess to.
+if resolvers.exec_enabled():
+    raise SystemExit(
+        "dave-r MCP server refuses to start with exec resolvers enabled. "
+        f"Unset {resolvers.EXEC_ENV} for this process. Exec resolvers run commands "
+        "declared in the repository under examination; that is not a capability an "
+        "MCP tool surface should expose.")
+
+# One boundary, applied to gates, resolvers and the trust anchor alike.
+SPEC = Spec(os.environ.get("DAVER_SPEC"), evidence_root=WORKSPACE)
 mcp = FastMCP("dave-r")
 
 
 def _safe_path(p: str) -> str:
-    """Resolve a caller-supplied path inside the workspace. Rejects traversal."""
-    full = os.path.abspath(os.path.join(WORKSPACE, p))
+    """Resolve a caller-supplied path inside the workspace.
+
+    realpath, not abspath: abspath normalises `..` but follows a symlink straight
+    out of the root, and a cloned repository brings its symlinks with it.
+    """
+    full = os.path.realpath(os.path.join(WORKSPACE, p))
     if not (full == WORKSPACE or full.startswith(WORKSPACE + os.sep)):
         raise ValueError(f"path escapes workspace root: {p}")
     if not os.path.isfile(full):
@@ -303,6 +326,8 @@ def daver_spec_info() -> str:
         "spec_version": open(os.path.join(SPEC.root, "VERSION")).read().strip(),
         "spec_root": SPEC.root,
         "workspace": WORKSPACE,
+        "exec_resolvers": "disabled (this server never enables them)",
+        "registered_resolvers": resolvers.registered(),
         "core_gates": core,
         "core_gate_count": sum(len(v) for v in core.values()),
         "adapter_gates": {a["id"]: [g["id"] for g in a.get("gates", [])] for a in SPEC.adapters.values()},

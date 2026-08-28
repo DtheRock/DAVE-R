@@ -13,7 +13,16 @@ from .report import render
 
 
 def _spec(args) -> Spec:
-    return Spec(getattr(args, "spec", None), profile=getattr(args, "profile", None) or "baseline")
+    _apply_exec_flag(args)
+    return Spec(getattr(args, "spec", None),
+                profile=getattr(args, "profile", None) or "baseline",
+                evidence_root=getattr(args, "evidence_root", None))
+
+
+def _apply_exec_flag(args) -> None:
+    """Exec resolvers are opt-in. Nothing enables them implicitly."""
+    if getattr(args, "allow_exec_resolvers", False):
+        resolvers.enable_exec()
 
 
 def _dump(path: str, cycle: dict) -> None:
@@ -149,10 +158,9 @@ def cmd_lint(args) -> int:
 
 def cmd_verify(args) -> int:
     """Re-run every observed value's source and compare. Closes the evidence loop."""
-    import os
-    if args.evidence_root:
-        os.environ["DAVER_EVIDENCE_ROOT"] = args.evidence_root
-    r = resolvers.verify(load_cycle(args.cycle), tolerance=args.tolerance, strict=args.strict)
+    _apply_exec_flag(args)
+    r = resolvers.verify(load_cycle(args.cycle), tolerance=args.tolerance,
+                         strict=args.strict, root=args.evidence_root)
     if args.json:
         print(json.dumps(r, indent=2, default=str))
         return 0 if r["ok"] else 1
@@ -168,6 +176,10 @@ def cmd_verify(args) -> int:
     print(f"  match {c['match']}, drift {c['drift']}, unresolvable {c['unresolvable']}, "
           f"error {c['error']}, skipped {c['skipped']}")
     print(f"  resolvers registered: {', '.join(r['registered_resolvers'])}")
+    print(f"  evidence root: {r['root']}")
+    if not resolvers.exec_enabled():
+        print("  exec resolvers: disabled (default). Enable with --allow-exec-resolvers "
+              "only against a repository you trust.")
     for f in r["findings"]:
         print(f"\n  [{f['status']}] {f['path']}")
         print(f"      {f.get('detail','')}")
@@ -205,10 +217,8 @@ def cmd_sign_request(args) -> int:
 
 
 def cmd_verify_signatures(args) -> int:
-    import os
-    if args.evidence_root:
-        os.environ["DAVER_EVIDENCE_ROOT"] = args.evidence_root
-    r = integrity.verify_all_signatures(load_cycle(args.cycle), args.allowed_signers)
+    r = integrity.verify_all_signatures(load_cycle(args.cycle), args.allowed_signers,
+                                        workspace=args.evidence_root or os.getcwd())
     print(json.dumps(r, indent=2))
     return 0 if r["ok"] else 1
 
@@ -290,10 +300,20 @@ def cmd_profiles(args) -> int:
 
 
 def main(argv=None) -> int:
+    EXEC_HELP = ("enable resolvers that RUN COMMANDS declared in "
+                 ".daver/resolvers.json. Off by default; never enable against "
+                 "an unvetted repository.")
     ap = argparse.ArgumentParser(prog="daver", description="DAVE+R lifecycle gates")
     ap.add_argument("--spec", help="path to spec/ (default: bundled, or $DAVER_SPEC)")
     ap.add_argument("--profile", default="baseline",
                     help="gate profile: baseline, agent-operated, regulated")
+    ap.add_argument("--evidence-root",
+                    help="containment root for resolvers and the trust anchor "
+                         "(default: current directory)")
+    ap.add_argument("--allow-exec-resolvers", action="store_true",
+                    help="enable resolvers that RUN COMMANDS declared in "
+                         ".daver/resolvers.json. Off by default. Never enable this "
+                         "against a repository you have not vetted.")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     c = sub.add_parser("check", help="run gates against a cycle document")
@@ -303,6 +323,8 @@ def main(argv=None) -> int:
     c.add_argument("--json", action="store_true")
     c.add_argument("-v", "--verbose", action="store_true", help="also list passing gates")
     c.add_argument("--profile", help="baseline (default), agent-operated, regulated")
+    c.add_argument("--evidence-root", help="containment root for resolvers and trust anchor")
+    c.add_argument("--allow-exec-resolvers", action="store_true", help=EXEC_HELP)
     c.set_defaults(func=cmd_check)
 
     g = sub.add_parser("gates", help="list gates, or explain one")
@@ -327,8 +349,9 @@ def main(argv=None) -> int:
 
     v = sub.add_parser("verify", help="re-run every observed source and compare")
     v.add_argument("cycle")
-    v.add_argument("--evidence-root", help="root for file/exec resolvers")
     v.add_argument("--tolerance", type=float, default=0.02)
+    v.add_argument("--evidence-root", help="containment root for resolvers")
+    v.add_argument("--allow-exec-resolvers", action="store_true", help=EXEC_HELP)
     v.add_argument("--strict", action="store_true", help="unregistered systems fail rather than skip")
     v.add_argument("--json", action="store_true")
     v.set_defaults(func=cmd_verify)
@@ -350,7 +373,7 @@ def main(argv=None) -> int:
     vs = sub.add_parser("verify-signatures", help="verify detached human signatures")
     vs.add_argument("cycle")
     vs.add_argument("--allowed-signers")
-    vs.add_argument("--evidence-root")
+    vs.add_argument("--evidence-root", help="the workspace; a trust anchor inside it is refused")
     vs.set_defaults(func=cmd_verify_signatures)
 
     sw = sub.add_parser("sweep", help="portfolio-wide exception hygiene")

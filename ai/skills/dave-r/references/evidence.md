@@ -46,8 +46,13 @@ Validate or Execute gate as a measured quantity, `asserted` is rejected.
 `derived` exists so that computed quantities (a rate from a numerator and
 denominator, a delta from before and after) are not laundered into `observed`.
 A derived value is only as good as its inputs: the engine walks `derived_from`
-transitively and rejects any derived value that roots in an `asserted` input
-where `observed` was required.
+to its **roots**, with a visited set for cycles, and rejects any derived value that
+roots in an `asserted` or `unmeasured` input where `observed` was required. A
+`derived_from` naming a path that does not resolve is also rejected, because a
+derivation that cannot name its parents is not a derivation.
+
+*(Through 1.1.0 this walk went one hop only, so `asserted → derived → derived`
+laundered cleanly. Fixed in 1.1.1.)*
 
 ## Agent obligations
 
@@ -100,8 +105,8 @@ missing rather than producing a number.
 guess:    { value: 0.5, provenance: asserted, asserted_by: someone }
 fp_rate:  { value: 0.5, provenance: derived, derived_from: [module.guess], method: passthrough }
 ```
-`derived` does not upgrade an assertion. The engine walks `derived_from`
-transitively and fails the gate with "evidence laundering".
+`derived` does not upgrade an assertion. The engine walks `derived_from` to its
+roots and fails the gate with "evidence laundering", at any depth.
 
 ## The contract
 
