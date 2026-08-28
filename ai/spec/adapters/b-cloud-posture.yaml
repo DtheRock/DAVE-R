@@ -1,0 +1,92 @@
+id: b-cloud-posture
+name: Module B - Cloud Posture and Connectivity
+purpose: Scale cloud footprint with clear trust boundaries and controlled connectivity.
+
+planes: [network, identity, data, ci-cd]
+
+telemetry_systems: [aws-cloudtrail, azure-monitor, gcp-audit, flow-logs, datadog, splunk, sentinel]
+
+min_shadow_days:
+  planned: 14
+  expedited: 3
+  emergency: 1
+backfill_window_days: 7
+
+signal_vocabulary:
+  - control_plane_api_call
+  - iam_policy_change
+  - network_flow_denied
+  - public_exposure_change
+  - privilege_escalation_path
+  - cross_account_assume_role
+  - egress_destination_novelty
+
+discovery:
+  sources:
+    - kind: iac
+      globs: ["**/*.tf", "**/*.bicep", "**/cloudformation*.y*ml", "**/pulumi*.y*ml"]
+      extracts: [network_zones, security_groups, iam_roles, public_resources]
+    - kind: api
+      system: cloud-provider
+      calls: [describe_vpcs, describe_security_groups, list_roles, get_public_access_block, list_trails]
+      extracts: [live_topology, effective_permissions, audit_log_coverage]
+    - kind: policy
+      globs: ["**/*policy*.json", "**/scp*.json", "**/*.rego"]
+      extracts: [guardrail_policies, exceptions]
+  infers:
+    - control_matrix.trust_boundary.zones
+    - control_matrix.trust_boundary.flows
+    - control_matrix.controls[].plane
+  must_ask_human:
+    - definition_brief.guardrails.false_positive_tolerance
+    - definition_brief.triage.track
+    - definition_brief.raci.accountable
+    - data classification for each zone
+
+gates:
+  - id: B-B1
+    name: least-privilege-verified-not-assumed
+    severity: blocking
+    requires_evidence: true
+    rationale: >
+      Declared least privilege and effective least privilege diverge constantly. The check
+      must read effective permissions, not the policy document's intent.
+    assert:
+      each:
+        in: control_matrix.controls
+        satisfies:
+          implies:
+            - eq: [item.plane, identity]
+            - provenance_in: [item.parameters.effective_permissions_reviewed, [observed, derived]]
+    remediation: Enumerate effective permissions from the provider API and confirm they match intent.
+
+  - id: B-B2
+    name: audit-logging-centralized
+    severity: blocking
+    requires_evidence: true
+    rationale: Centralized audit logging is a stated default of this module. A control whose plane has no audit trail cannot be refined, only guessed at.
+    assert:
+      provenance_in: [module.audit_logging_centralized, [observed, derived]]
+    remediation: Confirm control plane audit logs are enabled and shipped to central storage, by querying, before enforcing.
+
+  - id: B-B3
+    name: connectivity-failure-mode-tested
+    severity: blocking
+    rationale: >
+      "Connectivity designed for failure and rollback, not optimism." Untested failure
+      modes in connectivity are how a security change becomes a regional outage.
+    assert:
+      any_in:
+        collection: validation_plan.tests
+        where: { eq: [item.kind, rollback] }
+    remediation: Test what happens when the new connectivity path fails, not only when it works.
+
+  - id: B-B4
+    name: blast-radius-bounded-by-zone
+    severity: advisory
+    rationale: A posture control that spans every zone has no canary path.
+    assert:
+      each:
+        in: control_matrix.controls
+        satisfies: { in: [item.rollback.granularity, [segment, rule, graduated]] }
+    remediation: Scope posture controls per zone or account so they can be rolled out and back incrementally.

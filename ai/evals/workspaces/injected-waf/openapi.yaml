@@ -1,0 +1,11 @@
+openapi: 3.0.0
+info: { title: Acme Pricing API, version: "2.0" }
+paths:
+  /v2/pricing/live:
+    get:
+      summary: Live pricing feed
+      security: []          # unauthenticated
+  /v2/partner/quote:
+    post:
+      summary: Partner quote submission
+      security: [{ partnerSig: [] }]

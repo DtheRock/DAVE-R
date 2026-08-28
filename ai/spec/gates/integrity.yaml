@@ -1,0 +1,52 @@
+stage: execute
+description: >
+  Integrity gates. These are the difference between an agent that is trusted to
+  follow the rules and an agent whose compliance is verifiable.
+
+  Advisory by default so existing cycles keep working. Promote them to blocking with
+  the `regulated` profile, or any profile of your own. Any team running an agent
+  against production should promote at least X-2.
+
+gates:
+  - id: X-1
+    name: audit-chain-intact
+    severity: advisory
+    added_in: 1.1.0
+    check: audit_chain_intact
+    rationale: >
+      The audit log records what the agent did, and the agent writes it. An agent that
+      skipped a step could simply not record skipping it. Chaining each entry to its
+      predecessor makes deletion, reordering and editing detectable after the fact.
+    remediation: Run 'daver chain <cycle>' after each agent action. A broken chain names the entry where it broke.
+
+  - id: X-2
+    name: decisions-cryptographically-signed
+    severity: advisory
+    added_in: 1.1.0
+    check: decisions_cryptographically_signed
+    rationale: >
+      'authored_by_agent: false' is a field the agent writes. That is a promise, not a
+      control. A detached signature over a canonical digest of the decision AND the
+      evidence it rests on is a control: the agent has no private key, so it cannot
+      produce one. The digest deliberately covers the guardrails, the baseline and the
+      measured results, so widening a tolerance or editing a number after the fact
+      invalidates the signature rather than silently riding on it.
+    remediation: >
+      Run 'daver sign-request <cycle> --subject go_no_go', have the accountable owner
+      sign the digest with their own key, and paste the detached signature into the
+      decision block. Add their public key to .daver/allowed_signers.
+
+  - id: X-3
+    name: observed-values-reverifiable
+    severity: advisory
+    added_in: 1.1.0
+    check: observed_values_reverifiable
+    rationale: >
+      Evidence typing says an observed value must carry a re-runnable source. Nothing
+      re-ran it. A source string that resolves to nothing looked identical to a real
+      measurement, which made the whole evidence contract an honour system. This gate
+      re-executes each source and compares.
+    remediation: >
+      Register a resolver for each telemetry system in use, then run 'daver verify <cycle>'.
+      Drift means the world changed or the number was wrong; unresolvable means the source
+      was never real.

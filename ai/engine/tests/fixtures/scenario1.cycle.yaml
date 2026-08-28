@@ -1,0 +1,179 @@
+# Faithful encoding of scenario1.md ("Mitigating AI Scrapers Without Breaking the
+# Business") from github.com/DtheRock/DAVE-R, as published.
+#
+# Rule for this fixture: encode only what the scenario states. Where the published
+# scenario is silent, the field is ABSENT. The absences are the finding.
+spec_version: "1.0.0"
+cycle_id: acme-pricing-scraper
+adapter: a-edge-waf
+stage: execute
+
+definition_brief:
+  name: Block AI scrapers on live pricing API
+  date: "2026-02-13"
+  status: active
+  asset:
+    target: /v2/pricing/live
+    traffic_scope: Global edge traffic to the live pricing endpoint
+    critical_flows:
+      - id: partner-pricing-pull
+        description: Top 5 enterprise partners pulling live pricing
+        business_impact_if_broken: SLA violation, loss of trust between Security and Product
+
+  threat_scenarios:
+    - id: THR-001
+      behaviour: Aggressive AI data-crawlers scraping the live pricing endpoint at volume
+      observable_signature: High request rate from unauthenticated clients, origin DB CPU spikes, HTTP 503 rate rising
+      active_now: { value: true, provenance: observed, observed_at: "2026-02-13T09:00:00Z",
+                    source: { system: datadog, ref: "dashboard:origin-db-cpu", window: 7d } }
+
+  guardrails:
+    # The scenario states "maintaining a 0% false-positive rate for known partners".
+    false_positive_tolerance:
+      value: 0.0
+      provenance: asserted
+      asserted_by: security-team
+      note: Stated in the scenario as an absolute. No statistical control can guarantee this.
+    latency_budget_ms: { value: 15, provenance: asserted, asserted_by: security-team }
+    percentile: p95
+
+  success_metrics:
+    - id: SM-1
+      statement: Reduce unauthenticated scraping volume by 80%
+      # The scenario never records the pre-change scraping volume.
+      baseline: { provenance: unmeasured }
+      target: { value: 0.8, provenance: asserted, asserted_by: security-team }
+      measured_by: { system: datadog, ref: "dashboard:WAF-01" }
+
+  non_goals: []
+
+  # The scenario has no triage step. Encoded as the default the team actually took:
+  # harm was accruing (503s to paying customers) and they still ran a 5-day shadow.
+  triage:
+    track: planned
+    justification: { value: "Past rushed deployments blocked VIP partners", provenance: asserted, asserted_by: security-team }
+    harm_accruing: { value: true, provenance: observed, observed_at: "2026-02-13T09:00:00Z",
+                     source: { system: datadog, ref: "monitor:503-rate", window: 24h } }
+
+  # The scenario goes straight to a WAF rule. Caching, per-key quotas and requiring
+  # auth on the endpoint are never mentioned.
+  alternatives_considered: []
+
+  raci:
+    accountable: { name: Security Team, identity: "security-team", role: Security }
+    responsible:
+      - { name: Platform Team, identity: "platform-team" }
+    escalation_path: not stated
+
+control_matrix:
+  system: Edge WAF profiles
+  trust_boundary:
+    zones: [internet, edge, origin]
+    flows:
+      - { from: internet, to: edge, authenticated: false, data_sensitivity: internal }
+      - { from: edge, to: origin, authenticated: false, data_sensitivity: internal }
+  controls:
+    - id: WAF-RL-01
+      intent: Cap requests to the live pricing endpoint at 300/min
+      plane: waf
+      owner: { name: Security Team, identity: "security-team" }
+      addresses: [THR-001]
+      enforcement_mode: block
+      parameters: { limit_per_minute: 300 }
+      telemetry:
+        source: { system: datadog, ref: "dashboard:WAF-01", window: 7d }
+        metrics: [blocked_requests, origin_cpu, request_rate]
+      rollback:
+        procedure: Toggle Terraform variable waf_pricing_protect = false
+        granularity: global
+        target_seconds: 45
+        # "What protects the endpoint during the 45s+ rollback window" is not addressed.
+        tested: { value: true, provenance: asserted, asserted_by: platform-team }
+
+validation_plan:
+  # The scenario never measures a pre-change baseline.
+  baseline:
+    false_positive_rate: { provenance: unmeasured }
+    latency_ms: { provenance: unmeasured }
+  shadow:
+    start: "2026-01-20T00:00:00Z"
+    end: "2026-01-25T00:00:00Z"
+    mode: log-only
+    duration_days: { value: 5, provenance: observed, observed_at: "2026-01-25T00:00:00Z",
+                     source: { system: datadog, ref: "dashboard:WAF-01", window: 5d } }
+    covers_full_weekly_cycle: false
+    findings:
+      - description: BetaCorp had a misconfigured integration and was not sending partner headers
+        would_have_blocked: { value: true, provenance: observed, observed_at: "2026-01-22T00:00:00Z",
+                              source: { system: datadog, ref: "dashboard:WAF-01", window: 3d } }
+        action: exception-created
+        exception_id: EXC-001
+  tests:
+    - { id: T1, kind: abuse, method: Scripted request barrage, expected: Rule flags as would-block,
+        result: { value: pass, provenance: observed, observed_at: "2026-01-21T00:00:00Z",
+                  source: { system: datadog, ref: "dashboard:WAF-01" } } }
+    - { id: T2, kind: safety, method: Normal browser flow, expected: Passes cleanly,
+        result: { value: pass, provenance: asserted, asserted_by: platform-team } }
+    - { id: T3, kind: bypass, method: Hit endpoint from known partner IP, expected: Bypasses rate limit,
+        result: { value: pass, provenance: asserted, asserted_by: platform-team } }
+    - { id: T4, kind: rollback, method: Revert rule via CI/CD, expected: Rule disables,
+        result: { value: pass, provenance: asserted, asserted_by: platform-team } }
+  # No evasion analysis exists in the published scenario. The scrapers' move to
+  # 290 req/min is discovered 30 days later, in Refine.
+  evasion_analysis:
+    bypasses: []
+  measured:
+    # Never measured against the declared guardrail. "Zero support tickets" is a
+    # proxy, not a false positive rate.
+    false_positive_rate: { provenance: unmeasured }
+    latency_delta_ms: { provenance: unmeasured }
+    rollback_tested: { value: true, provenance: asserted, asserted_by: platform-team }
+  go_no_go: {}
+
+exception_register:
+  exceptions:
+    - id: EXC-001
+      applies_to: [WAF-RL-01]
+      scope: "BetaCorp static IP"
+      mechanism:
+        kind: ip
+        detail: BetaCorp static egress IP
+      rationale: Misconfigured integration not sending required partner headers
+      approver:
+        decision: approved
+        by: { name: Security Team, identity: "security-team" }
+        at: "2026-01-22T00:00:00Z"
+        authored_by_agent: false
+      created: "2026-01-22"
+      expiry: "2026-02-21"
+      review_cadence: monthly
+      reduction_plan: BetaCorp to fix partner header
+      status: retired
+
+execution:
+  rollout_stages:
+    - name: full
+      scope: All traffic to /v2/pricing/live
+      abort_criteria: not stated
+  runbook: not stated
+  change_record: CI/CD pipeline deploy during low-traffic window
+
+refinement_log:
+  entries:
+    - date: "2026-02-13"
+      version: v1.1.0
+      kind: exception-retired
+      change: Removed BetaCorp IP from the exception register
+      evidence: { value: "BetaCorp confirmed API headers fixed", provenance: observed,
+                  observed_at: "2026-02-13T00:00:00Z", source: { system: datadog, ref: "dashboard:WAF-01", window: 7d } }
+      impact: { value: "Reduced WAF rule bloat", provenance: asserted, asserted_by: security-team }
+      retires: [EXC-001]
+    - date: "2026-02-13"
+      version: v1.2.0
+      kind: threshold-tune
+      change: Lowered rate limit from 300/min to 200/min
+      evidence: { value: "Scrapers slowed to 290 req/min to evade the 300 threshold", provenance: observed,
+                  observed_at: "2026-02-13T00:00:00Z", source: { system: datadog, ref: "dashboard:WAF-01", window: 30d } }
+      impact: { value: "Caught additional low-and-slow scrapers", provenance: asserted, asserted_by: security-team }
+
+audit: []

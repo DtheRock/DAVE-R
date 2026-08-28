@@ -1,66 +1,104 @@
 # DAVE+R
-The DAVE+R Framework: A Lifecycle for Secure, Abuse-Resilient Edge Delivery
 
-This repository contains the DAVE+R Framework — a practical way to design, validate, roll out, and continuously improve security controls without breaking production traffic or the business.
+**A lifecycle for secure, abuse-resilient edge delivery.**
+Define → Architect → Validate → Execute → Refine.
 
-It focuses on security changes that are easy to get wrong: edge/WAF rules, cloud and platform controls, abuse and bot defenses, and other high-impact guardrails.
+A practical way to design, validate, roll out and continuously improve security controls
+without breaking production traffic or the business. It targets the changes that are
+easiest to get wrong: edge and WAF rules, cloud posture and connectivity, abuse and bot
+defenses, and the governance that keeps all of it maintainable.
 
-# What DAVE+R means
+Vendor-neutral by design. The differentiator is not a product, it is disciplined execution.
 
-## DAVE+R is a lifecycle:
+**Current version: v1.1.0** ([changelog](CHANGELOG.md))
 
-Define → Architect → Validate → Execute → Refine
+---
 
-It’s meant to be repeatable, measurable, and reversible. No heroics, no guesswork.
+## What's here
 
-# What’s here (and what’s coming)
+| | |
+| :--- | :--- |
+| **[DAVE-R-Framework.md](DAVE-R-Framework.md)** | The framework. Start here. |
+| **[templates/](templates/)** | Five working templates, one per artifact |
+| **[scenarios/](scenarios/)** | Worked examples, including what each one cost |
+| **[ai/](ai/)** | Machine-executable spec, gate engine, MCP server, agent skill |
+| **[ai/INSTALL.md](ai/INSTALL.md)** | Dependencies and the three ways to run it |
+| **[CHANGELOG.md](CHANGELOG.md)** | What changed between versions, and why |
 
-The core DAVE+R framework document (PDF)
+## The lifecycle
 
-Templates and working examples (definition briefs, validation plans, exception tracking, etc.) are planned for a future release.
+![The DAVE+R lifecycle](assets/lifecycle.svg)
 
-# Who this is for
+A triage gate at the front decides how deep the next four stages go. Everything else runs
+in order, produces named artifacts, and has exit criteria you can actually check.
 
-Security and platform teams shipping production changes
+## Core ideas
 
-Edge, WAF, API, and cloud security teams
+- Clear scope before change
+- Measure before enforce
+- Roll out in stages, each with an abort criterion
+- Always have a rollback, and know what protects you while it is engaged
+- Name three ways around your own control before you enforce it
+- Learn and refine continuously, and count whether the system is actually getting simpler
 
-Abuse, bot, and fraud teams that care about false positives and business impact
+## Who this is for
 
-# How to use it
+Security and platform teams shipping production changes. Edge, WAF, API and cloud
+security teams. Abuse, bot and fraud teams that care about false positives and business
+impact.
 
-## Start small:
+## How to use it
 
-Pick one critical flow (login, checkout, signup, API access)
+Start small. Pick one critical flow (login, checkout, signup, API access), run a full
+cycle for that scope, and use the telemetry and outcomes to decide what to expand or
+simplify next. The framework scales by repeating the cycle, not by making it heavier.
 
-Run a full DAVE+R cycle for that scope
+Depth scales with risk. The stages do not get skipped.
 
-Use telemetry and outcomes to decide what to expand or simplify next
+## Running it with an agent
 
-The framework scales by repeating the cycle, not by making it heavier.
+The framework is expressed in a form an AI agent can execute, in [`ai/`](ai/): 44 core
+gates plus 19 adapter gates, four domain adapters, JSON schemas for every artifact, an
+MCP server and an agent skill.
 
-# Core ideas
+The point is not automation for its own sake. A language model will produce a plausible
+false positive rate as readily as a true one, so the AI layer's central mechanism is
+**evidence typing**: every value is `asserted`, `observed`, `derived` or `unmeasured`, and
+gates that authorize enforcement read only the middle two. An agent that cannot measure
+must block rather than estimate.
 
-Clear scope before change
+Three things an agent may never write: the go/no-go signature, the enforcement
+authorization, and any exception approval. That boundary is enforced cryptographically,
+not by convention.
 
-Measure before enforce
+Dependencies are Python 3.9+ and PyYAML. Nothing else is required for the gates.
+Full setup, including the MCP server: [ai/INSTALL.md](ai/INSTALL.md).
 
-Roll out in stages
+```bash
+python3 ai/engine/daver_cli.py adapters
+python3 ai/engine/daver_cli.py questions a-edge-waf
+python3 ai/engine/daver_cli.py scaffold a-edge-waf my-change -o cycle.yaml
+python3 ai/engine/daver_cli.py check cycle.yaml
+```
 
-Always have a rollback
+Read [`ai/spec/THREAT-MODEL.md`](ai/spec/THREAT-MODEL.md) before pointing an agent at
+anything that matters.
 
-Learn and refine continuously
+Using DAVE+R with no agent at all remains entirely valid. The lifecycle came first and
+stands on its own.
 
-# License and attribution
+## License and attribution
 
-Licensed under Creative Commons Attribution 4.0 International (CC BY 4.0).
+Licensed under [Creative Commons Attribution 4.0 International](LICENSE) (CC BY 4.0).
+Free to use, share and adapt, including commercially, with attribution.
 
-You’re free to use, share, and adapt this work, including commercially, as long as you provide attribution.
+> DAVE+R Framework by Demetrios Petropoulos (CC BY 4.0). Changes were made.
 
-Suggested attribution:
+Attribution does not include the right to use the author's name or marks to imply
+endorsement of a derivative work.
 
-DAVE+R Framework by Demetrios Petropoulos (CC BY 4.0). Changes were made.
+## Versioning
 
-# Versions
-
-The framework is versioned. Changes between versions should be intentional and documented.
+Semantic versioning. MAJOR alters the lifecycle or core principles, MINOR adds modules or
+significant patterns, PATCH clarifies text or fixes defects. Changes between versions are
+intentional and documented in [CHANGELOG.md](CHANGELOG.md).
