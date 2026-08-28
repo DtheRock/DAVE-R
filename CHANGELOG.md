@@ -6,6 +6,55 @@ own Versioning section.
 
 ---
 
+## [1.1.2] - 2026-08-28
+
+Fixes from a visitor-path audit: a fresh clone, in a clean container, with no prior
+knowledge, walking the CLI, the skill and the MCP server exactly as documented. The
+engine itself was sound; everything found was packaging or documentation that breaks
+the experience described in `ai/INSTALL.md`. No spec, gate, schema or lifecycle changes:
+every 1.1.1 cycle document remains valid.
+
+### Fixed
+
+- **The documented MCP server install cannot start (critical).** `pip install mcp
+  pyyaml` resolves to mcp 2.x today, which renamed `FastMCP` to `MCPServer`; `server.py`
+  imports the old name and the process dies before serving anything. The MCP server had
+  no CI coverage at all, which is why this went unseen. Added `ai/mcp/requirements.txt`,
+  hash-pinned like `ai/requirements-ci.txt`, pinning `mcp` below 2.0, and a CI step that
+  installs it and asserts the server enumerates its 11 tools.
+- **The skill's own commands assume a working directory it will never have (high).**
+  Every command in `SKILL.md`, packaged and in-place alike, was a bare relative path to
+  `daver_cli.py`. An installed skill runs with the agent's working directory set to
+  whatever project it is securing, not this repository, so every command failed. `SKILL.md`
+  now opens the Workflow section by having the agent resolve the real path first.
+- **The packaged `.skill` names an install mechanism that does not exist (high).**
+  `ai/INSTALL.md` said "Install `dist/dave-r.skill` in Claude Code or Cowork"; neither
+  product installs a zip that way, and Cowork does not read the directory the fix below
+  writes to. Corrected to the actual unpack step for Claude Code, and scoped the claim:
+  Cowork is not supported until this ships as a plugin.
+- **`DAVER_WORKSPACE` failed open (medium).** Unset, the MCP server silently adopted the
+  process's working directory as the boundary confining cycle paths, resolver reads and
+  the trust anchor, contradicting this repo's own fail-closed posture. The server now
+  refuses to start without an explicit `DAVER_WORKSPACE`.
+- **Stale path in `ai/mcp/README.md` (low).** Its example config pointed at
+  `dave-r-ai/mcp/server.py`, a directory that does not exist; `ai/INSTALL.md`'s copy was
+  already correct. Also fixed a second, previously unnoticed stale relative path in the
+  same file's CI example. Both now match.
+- **Version and count drift (low).** `README.md` said v1.1.0 while the spec and
+  `CHANGELOG.md` had already moved to 1.1.1; `ai/INSTALL.md` and `ai/README.md` both
+  still said 84 tests against an actual 122. No git tags existed at all, so nothing could
+  be pinned or checked out; this release is the first tagged one.
+
+### Verification
+
+Fresh-clone conditions, empirically: real `pip install --require-hashes` against the new
+`ai/mcp/requirements.txt` on a clean venv; the real MCP server started, refused to start
+without `DAVER_WORKSPACE`, and enumerated its 11 tools; the packaged skill, unpacked and
+invoked from an unrelated project directory with the resolved path, ran correctly, and
+the original bare-relative form was reconfirmed broken from the same directory first. 122
+tests pass (123 including the new MCP-gated test, which skips without `mcp` installed);
+spec lint clean.
+
 ## [1.1.1] - 2026-08-28
 
 Security fixes from an adversarial review of v1.1.0. No lifecycle or artifact changes:
