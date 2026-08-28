@@ -6,6 +6,38 @@ own Versioning section.
 
 ---
 
+## [1.1.3] - 2026-08-28
+
+A second-round audit of 1.1.2 itself (re-verifying the visitor-path fixes rather than
+trusting them) found that one of them was wrong. Fixed here; no other changes.
+
+### Fixed
+
+- **The 1.1.2 fix for the MCP install broke it a different way (high).** Pointing
+  `ai/INSTALL.md` and `ai/mcp/README.md` at `pip install --require-hashes -r
+  ai/mcp/requirements.txt` does install cleanly - but only on the one platform that
+  file's hashes were resolved for (linux/x86_64, CPython 3.11, matching CI). On any
+  other Python version or OS - a real Mac included - `--require-hashes` correctly
+  refuses the install, because a different platform legitimately needs different
+  wheels for `cffi`, `pydantic-core`, `rpds-py` and others, with different hashes. Pip
+  reports this the same way it would report actual tampering, which is worse than the
+  1.1.2 bug it replaced: that one failed everywhere and looked broken, this one fails
+  on most platforms and, because the new CI step runs exactly ubuntu-latest + CPython
+  3.11, looks green regardless. Both docs now give the portable, unpinned command
+  (`pip install pyyaml "mcp<2" jsonschema referencing`); the hash-pinned file stays
+  CI-only, with a header explaining why it must not be used as a human install command.
+- **`ai/INSTALL.md` and `ai/README.md` said 122 tests (low).** The 1.1.2 commit that
+  corrected the prior "84 tests" also added a test, without updating the number again.
+  Actual is 123 (122 pass, 1 skips without `mcp` installed).
+
+### Verification
+
+The portable command installs clean, and the server it produces enumerates all 11
+tools, on real Python 3.11, 3.12 and 3.13 (previously only 3.11 was ever exercised).
+The hash-pinned CI file is unchanged apart from its header comment and still installs
+identically under `--require-hashes`. 123 tests collected, 122 pass + 1 skip; spec
+lint clean; no regressions.
+
 ## [1.1.2] - 2026-08-28
 
 Fixes from a visitor-path audit: a fresh clone, in a clean container, with no prior
