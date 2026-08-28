@@ -10,7 +10,7 @@ defenses, and the governance that keeps all of it maintainable.
 
 Vendor-neutral by design. The differentiator is not a product, it is disciplined execution.
 
-**Current version: v1.1.3** ([changelog](CHANGELOG.md))
+**Current version: v1.2.0** ([changelog](CHANGELOG.md))
 
 ---
 
@@ -22,7 +22,8 @@ Vendor-neutral by design. The differentiator is not a product, it is disciplined
 | **[templates/](templates/)** | Five working templates, one per artifact |
 | **[scenarios/](scenarios/)** | Worked examples, including what each one cost |
 | **[ai/](ai/)** | Machine-executable spec, gate engine, MCP server, agent skill |
-| **[ai/INSTALL.md](ai/INSTALL.md)** | Dependencies and the three ways to run it |
+| **[.claude-plugin/](.claude-plugin/)** | Plugin manifest: skill + MCP server, one-command install |
+| **[ai/INSTALL.md](ai/INSTALL.md)** | Dependencies and every way to run it |
 | **[CHANGELOG.md](CHANGELOG.md)** | What changed between versions, and why |
 
 ## The lifecycle
@@ -59,7 +60,9 @@ Depth scales with risk. The stages do not get skipped.
 
 The framework is expressed in a form an AI agent can execute, in [`ai/`](ai/): 44 core
 gates plus 19 adapter gates, four domain adapters, JSON schemas for every artifact, an
-MCP server and an agent skill.
+MCP server and an agent skill. The skill and MCP server bundle as one plugin
+([`.claude-plugin/`](.claude-plugin/)) for one-command install in Claude Code or Cowork;
+each still runs on its own.
 
 The point is not automation for its own sake. A language model will produce a plausible
 false positive rate as readily as a true one, so the AI layer's central mechanism is

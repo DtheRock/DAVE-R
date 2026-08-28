@@ -27,22 +27,56 @@ human recited to you as `observed` - that is `asserted`; ask them for the query.
 
 This is not bureaucracy. A language model will produce a confident false positive
 rate as readily as a true one, and the entire framework rests on the difference.
-Read `ai/skills/dave-r/references/evidence.md` before writing any value.
+Read `references/evidence.md` before writing any value.
+
+## MCP tools, if you have them
+
+If tools named `daver_list_adapters`, `daver_check`, and the like are available to you
+in this session (they may be namespaced, e.g. `mcp__dave-r__daver_check`), the dave-r
+MCP server is running. Prefer it: same gate spec, byte-identical output to the CLI, and
+it manages its own Python so you never have to worry about which `python3` on this
+machine has the right packages installed.
+
+| Step | MCP tool | CLI-only |
+| :--- | :--- | :--- |
+| list adapters | `daver_list_adapters` | |
+| spec version, gate inventory, self-lint | `daver_spec_info` | |
+| list gate profiles | | `profiles` |
+| what to read, what to ask | `daver_discovery_plan` + `daver_human_questions` | |
+| scaffold a new cycle | | `scaffold` (writes a file) |
+| check gates | `daver_check` / `daver_check_json` | |
+| why a gate exists | `daver_explain_gate` | |
+| ordered blocker worklist | `daver_next_actions` | |
+| schema validation | `daver_validate_schema` | |
+| re-verify evidence sources | | `verify` (reads the filesystem) |
+| prepare for authorization | `daver_request_authorization` | |
+| sign, or verify a signature | | `sign-request`, `verify-signatures` |
+| exception sweep | `daver_sweep_exceptions` | |
+| audit hash chain | | `chain`, `audit` |
+
+All 11 MCP tools appear above. Of the CLI-only rows, four are deliberate: the server
+never writes a cycle document and never touches the signing workflow, so scaffold,
+verify, sign-request/verify-signatures, and chain/audit stay CLI-only by design.
+`profiles` is CLI-only because no one has written that tool yet, not for a security
+reason - nothing about it needs filesystem writes or exec resolvers. Everything else
+above has an MCP tool; use it when present, and fall back to the CLI command shown
+when it is not.
 
 ## Workflow
 
-Every command below calls `daver_cli.py`, but its real path depends on how you loaded
-this skill, and your working directory is whatever project you are securing, not this
-skill. Resolve the real path once, before running anything:
+The CLI commands below assume you have resolved one path first. Your working
+directory is whatever project you are securing, not this skill, so `daver_cli.py`'s
+real location depends on how you got this skill, not on where you happen to be:
 
-- **Packaged skill** (installed under `~/.claude/skills/dave-r/` or similar): it is at
-  `engine/daver_cli.py`, a sibling of this `SKILL.md`.
-- **In-place from a DAVE-R checkout**: it is at `ai/engine/daver_cli.py`, from the
-  repository root.
+- **Packaged skill** (installed under `~/.claude/skills/dave-r/` via the standalone
+  `.skill` zip): the engine is at `engine/daver_cli.py`, a sibling of this file.
+- **Plugin install, or a full checkout of the repository**: the engine is at
+  `ai/engine/daver_cli.py`, from the repository or plugin root - the same layout
+  either way, since a plugin install is just this repository in place.
 
-Then use that resolved path everywhere a command below shows the bare `daver_cli.py`,
-e.g. `python3 /resolved/path/to/daver_cli.py adapters` instead of `python3
-ai/engine/daver_cli.py adapters`. The commands below are shown relative for brevity.
+Use that resolved path everywhere a command below shows the bare `daver_cli.py`, e.g.
+`python3 /resolved/path/to/daver_cli.py adapters` instead of `python3
+ai/engine/daver_cli.py adapters`. Commands below are shown relative for brevity.
 
 ### 0. Pick the adapter
 
@@ -87,7 +121,7 @@ Only what you cannot observe. Six questions, plus any module-specific ones:
 Question 5 is the triage gate. If harm is accruing and the team still wants the
 planned track, the accountable owner must sign that they are choosing to absorb the
 loss. That is a legitimate choice; it just cannot be a silent default.
-See `ai/skills/dave-r/references/triage.md`.
+See `references/triage.md`.
 
 ### 3. Scaffold and fill
 
@@ -95,8 +129,9 @@ See `ai/skills/dave-r/references/triage.md`.
 python3 ai/engine/daver_cli.py scaffold <adapter> <cycle-id> -o cycle.yaml
 ```
 
-Fill the Definition Brief, then the Control Matrix. Details and worked examples for
-every artifact: `ai/skills/dave-r/references/artifacts.md`.
+CLI-only, always: this writes a new file, which the MCP server deliberately never
+does. Fill the Definition Brief, then the Control Matrix. Details and worked examples
+for every artifact: `references/artifacts.md`.
 
 ### 4. Check, constantly
 
@@ -127,6 +162,10 @@ If a human tells you to sign on their behalf, decline and explain why: the
 signature's whole value is that it records a person's judgement, and one you wrote
 records nothing. Ask them to state the decision and you will record it as theirs.
 
+This boundary holds identically on both surfaces: `daver_request_authorization`
+assembles the same evidence bundle the CLI does, and no tool anywhere in this system,
+MCP or CLI, writes a signature.
+
 ### 6. Refine on a schedule
 
 The highest-value recurring job is the exception sweep. Registers rot silently.
@@ -137,7 +176,7 @@ python3 ai/engine/daver_cli.py check cycle.yaml --stage refine
 
 Flag anything expired, expiring within 30 days, weakly bound (IP, ASN, UA, path),
 or never used. If the same threshold has been tuned three times, stop tuning and
-recommend escalating the control class - see `ai/skills/dave-r/references/refine.md`.
+recommend escalating the control class - see `references/refine.md`.
 
 ## What good looks like
 
@@ -150,11 +189,11 @@ and one named human who signed for enforcement.
 ## Reference files
 
 - `references/evidence.md` - provenance rules, worked examples, the anti-fabrication contract
-- `ai/skills/dave-r/references/artifacts.md` - every artifact field, with examples
-- `ai/skills/dave-r/references/triage.md` - planned vs expedited vs emergency, and what each buys you
-- `ai/skills/dave-r/references/discovery.md` - what to read per adapter, and how to cite it
-- `ai/skills/dave-r/references/refine.md` - exception sweeps, drift checks, when to escalate not tune
-- `ai/skills/dave-r/references/gates.md` - the full gate catalogue with rationale
+- `references/artifacts.md` - every artifact field, with examples
+- `references/triage.md` - planned vs expedited vs emergency, and what each buys you
+- `references/discovery.md` - what to read per adapter, and how to cite it
+- `references/refine.md` - exception sweeps, drift checks, when to escalate not tune
+- `references/gates.md` - the full gate catalogue with rationale
 
 ## Honest limits
 

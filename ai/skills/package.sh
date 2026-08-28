@@ -8,8 +8,8 @@ OUT="${1:-$ROOT/dist/dave-r.skill}"
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 
 mkdir -p "$TMP/dave-r"
-cp "$ROOT/ai/skills/dave-r/SKILL.md" "$TMP/dave-r/"
-cp -r "$ROOT/ai/skills/dave-r/references" "$TMP/dave-r/"
+cp "$ROOT/skills/dave-r/SKILL.md" "$TMP/dave-r/"
+cp -r "$ROOT/skills/dave-r/references" "$TMP/dave-r/"
 cp -r "$ROOT/ai/spec" "$TMP/dave-r/spec"
 mkdir -p "$TMP/dave-r/engine/tests/fixtures"
 cp -r "$ROOT/ai/engine/daver" "$TMP/dave-r/engine/daver"
@@ -21,7 +21,6 @@ python3 - "$TMP/dave-r/SKILL.md" <<'PY'
 import sys
 p = sys.argv[1]; s = open(p).read()
 s = s.replace("python3 ai/engine/daver_cli.py", "python3 engine/daver_cli.py")
-s = s.replace("`ai/skills/dave-r/references/", "`references/")
 s = s.replace("`ai/engine/tests/fixtures/", "`engine/tests/fixtures/")
 open(p, "w").write(s)
 PY
