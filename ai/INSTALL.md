@@ -69,17 +69,36 @@ so it runs with no checkout of this repo:
 bash ai/skills/package.sh          # writes dist/dave-r.skill
 ```
 
-Install `dist/dave-r.skill` in Claude Code or Cowork, then ask for a DAVE+R cycle in
-plain language. The skill shells out to the bundled CLI, so `pyyaml` still needs to be
-importable by whatever Python the environment uses.
+`dist/dave-r.skill` is a zip, not something either product opens directly. In Claude
+Code, unpack it into the skills directory it reads from:
 
-Using it in place from a checkout works too: point the agent at `ai/skills/dave-r/SKILL.md`.
+```bash
+mkdir -p ~/.claude/skills && unzip -o dist/dave-r.skill -d ~/.claude/skills/
+```
+
+That gives you `~/.claude/skills/dave-r/`, picked up on the next session. The skill
+shells out to the bundled CLI, so `pyyaml` still needs to be importable by whatever
+Python the environment uses.
+
+Cowork does not read `~/.claude/skills/`. Cowork sessions load skills enabled on the
+claude.ai account, synced at session start and managed from Customize in the desktop
+sidebar or skills settings on claude.ai, not from a file you unpack yourself. Until this
+skill ships as a Cowork plugin, the packaged-skill path above is for Claude Code only.
+
+Using it in place from a checkout works too, in either product: point the agent at
+`ai/skills/dave-r/SKILL.md`.
 
 ## 3. As an MCP server
 
 ```bash
-pip install mcp pyyaml            # add jsonschema referencing for schema validation
+pip install pyyaml
+pip install --require-hashes -r ai/mcp/requirements.txt
 ```
+
+That second command installs `mcp` pinned below 2.0 (2.x renamed `FastMCP` to
+`MCPServer`; `ai/mcp/server.py` has not been migrated, and a bare `pip install mcp`
+installs 2.x today) plus `jsonschema`/`referencing` for schema validation, hash-pinned
+the same way `ai/requirements-ci.txt` is.
 
 ```json
 {
@@ -172,7 +191,7 @@ value. See `ai/engine/daver/resolvers.py`; `file` is about thirty lines.
 ```bash
 python3 ai/engine/daver_cli.py lint                                    # spec self-check
 python3 ai/engine/daver_cli.py check ai/engine/tests/fixtures/reference.cycle.yaml --stage refine
-pip install pytest && python3 -m pytest ai/engine/tests -q             # 84 tests
+pip install pytest && python3 -m pytest ai/engine/tests -q             # 122 tests
 bash ai/examples/signing/demo.sh                                       # needs ssh-keygen
 ```
 

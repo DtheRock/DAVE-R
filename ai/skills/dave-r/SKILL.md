@@ -31,6 +31,19 @@ Read `ai/skills/dave-r/references/evidence.md` before writing any value.
 
 ## Workflow
 
+Every command below calls `daver_cli.py`, but its real path depends on how you loaded
+this skill, and your working directory is whatever project you are securing, not this
+skill. Resolve the real path once, before running anything:
+
+- **Packaged skill** (installed under `~/.claude/skills/dave-r/` or similar): it is at
+  `engine/daver_cli.py`, a sibling of this `SKILL.md`.
+- **In-place from a DAVE-R checkout**: it is at `ai/engine/daver_cli.py`, from the
+  repository root.
+
+Then use that resolved path everywhere a command below shows the bare `daver_cli.py`,
+e.g. `python3 /resolved/path/to/daver_cli.py adapters` instead of `python3
+ai/engine/daver_cli.py adapters`. The commands below are shown relative for brevity.
+
 ### 0. Pick the adapter
 
 ```bash

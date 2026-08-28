@@ -17,7 +17,8 @@ Security posture, deliberate:
     file reads and the signature trust anchor are all confined to it. An earlier
     version confined only the cycle path while the resolver layer read a second
     variable defaulting to the process cwd, so pinning the documented boundary
-    bought nothing.
+    bought nothing. It is now required: the server refuses to start rather than
+    silently adopting whatever directory the MCP client happened to launch it in.
   * Paths resolve through realpath and symlinks are refused, so a link inside the
     workspace cannot read files outside it.
 """
@@ -33,7 +34,17 @@ from mcp.server.fastmcp import FastMCP
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "engine"))
 from daver import Spec, load_cycle, render, resolvers  # noqa: E402
 
-WORKSPACE = os.path.realpath(os.environ.get("DAVER_WORKSPACE", os.getcwd()))
+_workspace_env = os.environ.get("DAVER_WORKSPACE")
+if not _workspace_env:
+    raise SystemExit(
+        "dave-r MCP server refuses to start without an explicit DAVER_WORKSPACE. "
+        "This is the one boundary confining cycle paths, resolver reads and the "
+        "signature trust anchor; defaulting it to the process's working directory "
+        "would make that boundary whatever directory the MCP client happened to "
+        "launch from, which is not something this server's own security posture "
+        "should depend on silently. Set DAVER_WORKSPACE to the directory containing "
+        "the cycle documents this server should operate on.")
+WORKSPACE = os.path.realpath(_workspace_env)
 
 # Refuse to start with exec resolvers on. An operator may legitimately enable them
 # for the CLI; over MCP the caller is a language model acting on content it

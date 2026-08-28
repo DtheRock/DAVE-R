@@ -5,8 +5,13 @@
 ## Install
 
 ```bash
-pip install mcp pyyaml jsonschema referencing
+pip install --require-hashes -r ai/mcp/requirements.txt
 ```
+
+That installs `mcp` pinned below 2.0 (2.x renamed `FastMCP` to `MCPServer`; this server
+has not been migrated) plus `jsonschema`/`referencing` for schema validation, all
+hash-pinned for the same reason `ai/requirements-ci.txt` is. `pyyaml` comes from the CLI
+requirement; install it too if you have not already (`pip install pyyaml`).
 
 Claude Desktop / Claude Code config:
 
@@ -15,10 +20,10 @@ Claude Desktop / Claude Code config:
   "mcpServers": {
     "dave-r": {
       "command": "python3",
-      "args": ["/absolute/path/to/dave-r-ai/mcp/server.py"],
+      "args": ["/absolute/path/to/DAVE-R/ai/mcp/server.py"],
       "env": {
         "DAVER_WORKSPACE": "/absolute/path/to/your/cycles",
-        "DAVER_SPEC": "/absolute/path/to/dave-r-ai/spec"
+        "DAVER_SPEC": "/absolute/path/to/DAVE-R/ai/spec"
       }
     }
   }
@@ -68,6 +73,6 @@ they are resolved inside it and traversal is rejected.
 ## CI
 
 ```bash
-python3 engine/daver_cli.py check cycle.yaml --json
+python3 ai/engine/daver_cli.py check cycle.yaml --json
 # exit 0 = no blocking gates, exit 1 = blocked
 ```
