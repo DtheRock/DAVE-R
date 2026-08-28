@@ -52,7 +52,7 @@ An executor must implement these to run the gate files.
 | `before` | `[a, b]` | a is a timestamp strictly before b |
 | `in` | `[ref, [values]]` | Value is a member |
 | `matches` | `[ref, regex]` | String matches |
-| `provenance_in` | `[ref, [provenances]]` | Evidence rule. Also verifies `observed` has a re-runnable source, and that `derived` does not root in an assertion. |
+| `provenance_in` | `[ref, [provenances]]` | Evidence rule. Also verifies `observed` has a re-runnable source, and walks `derived_from` **to its roots** (visited set for cycles), rejecting any root that is `asserted` or `unmeasured`, and any parent that does not resolve. |
 | `all` `any` | `[exprs]` | Conjunction, disjunction |
 | `not` | `expr` | Negation |
 | `implies` | `[cond, then]` | Vacuously true when cond is false |
@@ -66,6 +66,14 @@ Special references: `$now`, `$now+Nd`, `$now-Nd`, and `$adapter.<key>` (where
 
 **A malformed or unknown expression must evaluate to FAIL, never to pass.** A gate that
 errors open is worse than no gate, because it reports safety it did not check.
+
+**An unrecognised reference root is an authoring error, not a string literal.** Returning
+the reference text as a value makes `exists` pass on a typo, so a broken gate reports as a
+passing one. Implementations should surface this at lint time.
+
+**A check that verified nothing must report "not applicable", never a pass.** Executors
+need a third state beyond passed/failed, or an evidence gate reports green on a cycle where
+nothing was checked.
 
 ## Minimum viable executor
 

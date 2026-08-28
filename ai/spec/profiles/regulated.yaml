@@ -1,9 +1,10 @@
 id: regulated
 name: Regulated
 description: >
-  Everything blocking. Adds re-verification of every observed value against its
-  recorded source, so a claimed measurement that no longer resolves fails the cycle.
-  Requires a registered resolver per telemetry system.
+  Everything blocking, and every observed value must be re-runnable: a telemetry
+  system with no registered resolver fails the cycle rather than being reported as
+  a gap. This is the profile that genuinely requires a resolver per telemetry
+  system, so adopt it once you have wired them up, not before.
 severity_overrides:
   X-1: blocking
   X-2: blocking

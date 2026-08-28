@@ -6,6 +6,83 @@ own Versioning section.
 
 ---
 
+## [1.1.1] - 2026-08-28
+
+Security fixes from an adversarial review of v1.1.0. No lifecycle or artifact changes:
+every v1.1.0 cycle document remains valid.
+
+The review's central observation is the one that reorders everything else. v1.1.0's threat
+model was written for one deployment (your agent, your gates, your workspace) and then
+shipped as an open-source tool that strangers install and point at code they have not
+vetted. That moves the victim, and it makes the **defaults** the security policy: you
+cannot instruct every downstream user, and almost none will read the threat model.
+
+### Fixed
+
+- **Remote code execution in the default install (critical).** Running the gates on an
+  untrusted document executed commands from that document's directory. `.daver/resolvers.json`
+  was read from the working directory, so it travelled inside the repository under
+  examination, and the "argv list, not a shell string" defence did not hold, because an
+  argv list whose first element is a shell is a shell. `exec` resolvers are now **not
+  registered by default** (`DAVER_ENABLE_EXEC=1` or `--allow-exec-resolvers` to opt in),
+  `argv[0]` is allowlisted against interpreters, and inline-code flags are refused.
+- **The documented MCP boundary did not bound the layer doing the work (critical).**
+  `DAVER_WORKSPACE` confined cycle paths while the resolver layer read `DAVER_EVIDENCE_ROOT`,
+  defaulting to the process working directory, so pinning the documented boundary bought
+  nothing. There is now one boundary, supplied by the caller, applied to cycle paths,
+  resolver reads and the trust anchor alike. The MCP server refuses to start with exec
+  resolvers enabled.
+- **An agent could forge a human sign-off (critical).** X-2 rests on the agent having no
+  private key, but the trust anchor resolved inside the workspace the agent operates in,
+  and `.gitignore` excluded it so no committed copy existed to compare against. The anchor
+  now resolves from operator space and one inside the audited workspace is refused.
+- **Evidence laundering at two hops (high).** `derived_from` was checked one hop deep, so
+  `asserted → derived → derived` reached an enforcement gate as valid evidence. The
+  derivation graph is now walked to its roots with a visited set; unresolvable and
+  parentless derivations fail too.
+- **X-3 reported a clean pass having verified nothing (high).** `check:` gates could not
+  express "not applicable", so the evidence gate went green for every consumer with no
+  telemetry resolvers registered, which is everyone on first run. Checks can now report
+  applicability, and `agent-operated` promotes X-3 to blocking. It distinguishes a source
+  a resolver ran and could not find (a fabrication signal, always blocking) from a
+  telemetry system with no registered resolver (an operator gap, reported as not
+  applicable). Only `regulated` treats the second as a failure, so adopting
+  `agent-operated` does not require standing up a telemetry backend first.
+- **A misspelled reference root became a passing gate (high).** An unrecognised root was
+  returned as a string literal, so `exists` and `ne` both passed. `lint()` now dry-runs
+  every gate's references and fails the build, which also gives third-party adapter
+  authors a conformance check they did not have.
+- **The signature covered less than claimed (medium).** The signed subject took only
+  `len(bypasses)` and a list of exception ids, so a signed cycle could be rewritten while
+  the signature stayed valid: bypass dispositions flipped, exception scope and expiry
+  changed, control enforcement modes altered, the audit log deleted. It now signs digests
+  of whole sub-documents plus the audit chain head, and carries a `subject_version` so old
+  signatures fail loudly. Signing the chain head also closes, for signed cycles, the
+  tamper-and-re-chain risk the threat model documented as residual.
+- **Symlinks walked out of the containment root (medium).** Both checks used `abspath`,
+  which normalises `..` but follows symlinks. Now `realpath`, with symlinks refused.
+- **CI failed on every push to main (medium).** The gate loop skipped the scenario fixtures
+  but not the fixtures directory, so it gated `reference.cycle.yaml` under `agent-operated`,
+  which it can never satisfy. A permanently red required check teaches people to merge past
+  red. The loop now skips the whole fixtures directory, and a separate step asserts the
+  fixture still behaves as documented.
+- **Unpinned CI dependencies (medium).** Actions are pinned to commit SHAs and Python
+  dependencies to hashes in `ai/requirements-ci.txt`, since the job's output *is* the
+  security control.
+- **Unbounded regex over agent-written strings (medium).** `matches` truncates its subject.
+
+### Changed
+
+- The CI template ships with `DAVER_ENABLE_EXEC: '0'` set explicitly rather than merely
+  absent, and a header explaining that the `pull_request` trigger is load-bearing, that
+  `pull_request_target` and secrets are unsafe here, and why.
+- `THREAT-MODEL.md` gains T-13 (consumers copy the CI template) and corrects four claims
+  that were false under the distribution model, in place rather than by deletion.
+- `ai/mcp/README.md` no longer claims a posture the code did not have.
+- 33 regression tests added, one per finding, each written to fail on v1.1.0.
+
+---
+
 ## [1.1.0] - 2026-08-28
 
 The framework was written for humans and worked. Expressing it in a form an agent could
@@ -115,5 +192,6 @@ Initial public reference.
 - Five starter templates.
 - CC BY 4.0 licence.
 
+[1.1.1]: https://github.com/DtheRock/DAVE-R/releases/tag/v1.1.1
 [1.1.0]: https://github.com/DtheRock/DAVE-R/releases/tag/v1.1.0
 [1.0.0]: https://github.com/DtheRock/DAVE-R/releases/tag/v1.0.0

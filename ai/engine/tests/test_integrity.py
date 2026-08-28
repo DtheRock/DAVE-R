@@ -152,7 +152,7 @@ def test_file_resolver_matches(tmp_path):
     cycle = {"module": {"x": {"value": 0.0006, "provenance": "observed",
                               "observed_at": "2026-01-01T00:00:00Z",
                               "source": {"system": "file", "ref": "m.json#/fp"}}}}
-    assert resolvers.verify(cycle)["ok"]
+    assert resolvers.verify(cycle, root=str(tmp_path))["ok"]
 
 
 def test_file_resolver_detects_drift(tmp_path):
@@ -161,7 +161,7 @@ def test_file_resolver_detects_drift(tmp_path):
     cycle = {"module": {"x": {"value": 0.0006, "provenance": "observed",
                               "observed_at": "2026-01-01T00:00:00Z",
                               "source": {"system": "file", "ref": "m.json#/fp"}}}}
-    r = resolvers.verify(cycle)
+    r = resolvers.verify(cycle, root=str(tmp_path))
     assert not r["ok"] and r["counts"]["drift"] == 1
 
 
@@ -171,7 +171,7 @@ def test_fabricated_source_is_caught(tmp_path):
     cycle = {"module": {"x": {"value": 0.0006, "provenance": "observed",
                               "observed_at": "2026-01-01T00:00:00Z",
                               "source": {"system": "file", "ref": "does-not-exist.json#/fp"}}}}
-    r = resolvers.verify(cycle)
+    r = resolvers.verify(cycle, root=str(tmp_path))
     assert not r["ok"]
     assert r["findings"][0]["status"] == "unresolvable"
 
@@ -181,7 +181,7 @@ def test_resolver_rejects_path_traversal(tmp_path):
     cycle = {"module": {"x": {"value": "root:x:0:0", "provenance": "observed",
                               "observed_at": "2026-01-01T00:00:00Z",
                               "source": {"system": "file", "ref": "../../../etc/passwd"}}}}
-    r = resolvers.verify(cycle)
+    r = resolvers.verify(cycle, root=str(tmp_path))
     assert not r["ok"] and r["findings"][0]["status"] == "error"
 
 
@@ -192,7 +192,7 @@ def test_exec_resolver_refuses_shell_strings(tmp_path):
     d.mkdir()
     (d / "resolvers.json").write_text(json.dumps({"exec": {"bad": "echo pwned; rm -rf /"}}))
     os.environ["DAVER_EVIDENCE_ROOT"] = str(tmp_path)
-    r = resolvers._exec_resolver({"system": "exec", "ref": "bad"})
+    r = resolvers._exec_resolver({"system": "exec", "ref": "bad"}, str(tmp_path))
     assert r.status == "error" and "argv list" in r.detail
 
 
@@ -201,7 +201,7 @@ def test_exec_resolver_rejects_undeclared_key(tmp_path):
     d.mkdir()
     (d / "resolvers.json").write_text(json.dumps({"exec": {}}))
     os.environ["DAVER_EVIDENCE_ROOT"] = str(tmp_path)
-    r = resolvers._exec_resolver({"system": "exec", "ref": "whatever"})
+    r = resolvers._exec_resolver({"system": "exec", "ref": "whatever"}, str(tmp_path))
     assert r.status == "unresolvable"
 
 
