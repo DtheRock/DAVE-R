@@ -5,13 +5,19 @@
 ## Install
 
 ```bash
-pip install --require-hashes -r ai/mcp/requirements.txt
+pip install pyyaml "mcp<2" jsonschema referencing
 ```
 
-That installs `mcp` pinned below 2.0 (2.x renamed `FastMCP` to `MCPServer`; this server
-has not been migrated) plus `jsonschema`/`referencing` for schema validation, all
-hash-pinned for the same reason `ai/requirements-ci.txt` is. `pyyaml` comes from the CLI
-requirement; install it too if you have not already (`pip install pyyaml`).
+`mcp<2` matters: mcp 2.x renamed `FastMCP` to `MCPServer` and this server has not been
+migrated; a bare `pip install mcp` installs 2.x today. `jsonschema` and `referencing`
+are for `daver_validate_schema`. `pyyaml` comes from the CLI requirement.
+
+CI installs the same packages hash-pinned for reproducibility instead:
+`pip install --require-hashes -r ai/mcp/requirements.txt`, resolved for exactly one
+platform (linux/x86_64, CPython 3.11). That file is not a portable install command -
+a different platform or Python version legitimately needs different wheels, and
+`--require-hashes` correctly refuses to substitute them - which is why it isn't what's
+given above.
 
 Claude Desktop / Claude Code config:
 

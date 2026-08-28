@@ -29,7 +29,7 @@ spec/              vendor-neutral, the normative layer
   adapters/          Modules A-D, 19 additional gates
 engine/            reference executor + CLI (pyyaml only)
   daver/             ~700 lines: refs, evidence, evaluator, runner
-  tests/             122 tests, incl. both published scenarios as fixtures
+  tests/             123 tests, incl. both published scenarios as fixtures
 mcp/               MCP server, 11 tools, read-only, cannot authorize
 skills/dave-r/     agent skill: discovery-first orchestration
 ```
