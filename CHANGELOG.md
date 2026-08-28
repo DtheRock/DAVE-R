@@ -6,6 +6,81 @@ own Versioning section.
 
 ---
 
+## [1.2.0] - 2026-08-28
+
+Packaged the skill and the MCP server as one installable plugin for Claude Code and
+Cowork, instead of two things a visitor had to wire up separately. Building it surfaced
+two real bugs that reasoning about the schema would not have caught; both were found by
+actually installing the plugin on a real machine and testing what came up, which is the
+same discipline this framework asks of everyone else.
+
+### Added
+
+- Plugin: `.claude-plugin/plugin.json` and `marketplace.json`. `claude plugin
+  marketplace add` + `claude plugin install dave-r` in Claude Code, or the packaged
+  `.plugin` zip in Cowork.
+- `ai/mcp/launch.py`: a stdlib-only launcher that probes for a Python interpreter with
+  `pyyaml` and `mcp<2` importable, checking a local `.venv`/`venv` first, and execs into
+  it - the plugin does not need to know in advance which `python3` on a given machine has
+  the right packages.
+- `skills/dave-r/SKILL.md` documents which steps have an MCP-tool equivalent and prefers
+  calling those when present, falling back to the CLI otherwise. The preference is
+  one-directional and lives entirely in the skill's own instructions: the MCP server has
+  no concept of the skill to prefer or defer to in return.
+
+### Changed
+
+- Moved the skill from `ai/skills/dave-r/` to `skills/dave-r/`. The plugin schema reads
+  skills only from a fixed `skills/*/SKILL.md` at the plugin root, and the plugin root is
+  this repository, so there is now exactly one copy of the skill instead of a choice
+  between duplicating it or restructuring. `ai/skills/package.sh` and every doc reference
+  were updated to match; the standalone `.skill` build still works from the new location.
+
+### Fixed
+
+- **A plugin's own repository, opened as a Claude Code project, registered its MCP
+  server twice, once permanently broken (high).** The first cut kept the MCP config at
+  the schema's default location, `.mcp.json` at the plugin root. Claude Code auto-loads
+  any `.mcp.json` at a project's root as project-scoped config independently of plugin
+  loading, and since this plugin's root is this repository's root, opening this checkout
+  as a project - not installing it as a plugin - triggered that auto-load too, in a
+  context where the plugin substitution variables `${CLAUDE_PLUGIN_ROOT}` and
+  `${CLAUDE_PROJECT_DIR}` are not defined. That registered a second `dave-r` server next
+  to the working plugin-scoped one, permanently broken, prompting for approval every
+  session. Moved the config to `ai/mcp/plugin.mcp.json` and pointed `plugin.json`'s
+  `mcpServers` field at it; a file not literally named `.mcp.json` is not auto-loaded, so
+  only the plugin-scoped registration exists now. Caught by opening this repository
+  itself as a Claude Code project after installing the plugin from it, not by reasoning
+  about the schema.
+- **`ai/mcp/launch.py` never found the one interpreter that actually had the right
+  packages (high).** Its candidate list checked generic interpreter names and a handful
+  of hardcoded system paths, but never a virtualenv local to the checkout - the standard
+  place, and this guide's own recommendation, for satisfying PEP 668 without touching the
+  system Python. Two bugs compounded. First, adding `.venv`/`venv` candidates was not
+  enough on its own: every candidate was deduplicated by `os.path.realpath()`, which
+  resolves a venv's `bin/python3` symlink to the exact same file as the system
+  interpreter that created it, so the venv candidate was discarded as a "duplicate" of
+  the system interpreter already tried, and failed, moments before - despite the two
+  behaving differently, because only the symlink path triggers Python's own venv
+  site-packages activation. Fixed by deduplicating on the literal resolved path instead
+  of its realpath. Found live: the plugin installed cleanly and validated cleanly, but
+  `claude mcp list` showed the MCP server failing to connect until this was fixed.
+
+### Verification
+
+123 tests pass (`pytest ai/engine/tests`), spec lint clean, the reference cycle reports
+CAN ADVANCE, both scenario fixtures correctly report BLOCKED, and the signing demo runs
+end to end including tamper detection and the anchor-separation refusal - all unaffected
+by the skill's move or the plugin additions. `claude plugin validate . --strict` and
+`claude plugin validate .claude-plugin/plugin.json --strict` both pass. Installed for
+real with `claude plugin marketplace add` + `claude plugin install dave-r` on a real
+machine, then confirmed with a raw MCP `initialize` + `tools/list` handshake against
+`ai/mcp/launch.py`, spawned with the exact environment the plugin sets, that all 11 tools
+register with correct schemas; `claude mcp list` shows the plugin's MCP server connected
+with no config warnings and no duplicate registration. `bash ai/skills/package.sh` still
+builds a valid standalone `.skill` zip from the new `skills/dave-r/` location, with every
+reference path inside it relative and correct.
+
 ## [1.1.3] - 2026-08-28
 
 A second-round audit of 1.1.2 itself (re-verifying the visitor-path fixes rather than

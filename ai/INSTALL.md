@@ -1,12 +1,14 @@
 # Install and run
 
-Three independent ways to use this. **You do not need all of them.** They share the spec
-in `spec/`; none of them depends on the others.
+Four ways to use this. **You do not need all of them.** They share the spec in `spec/`;
+none depends on the others, and the plugin is just the skill and the MCP server bundled
+for one-step install, not a fifth thing to keep in sync.
 
 | You want | Use | Needs |
 | :--- | :--- | :--- |
 | Run gates from a terminal or CI | the CLI | Python 3.9+, `pyyaml` |
-| An agent to run the lifecycle in Claude Code or Cowork | the skill | same as CLI |
+| The skill and MCP server installed together, in Claude Code or Cowork | the plugin | same as CLI |
+| Just the agent, no plugin | the skill | same as CLI |
 | Any MCP client to call the lifecycle as tools | the MCP server | CLI deps + `mcp` |
 
 ## Dependencies, precisely
@@ -60,7 +62,42 @@ python3 ai/engine/daver_cli.py check cycle.yaml
 
 Exit code 0 means no blocking gate failed; 1 means blocked. That is what CI uses.
 
-## 2. As a skill (Claude Code, Cowork)
+## 2. As a plugin (Claude Code, Cowork)
+
+The plugin bundles the skill and the MCP server behind one manifest
+([`.claude-plugin/`](../.claude-plugin/)) so both install together; each still runs fully
+on its own, and installing the plugin does not require choosing between them.
+
+**Claude Code**, from a checkout:
+
+```bash
+claude plugin marketplace add /absolute/path/to/DAVE-R
+claude plugin install dave-r
+```
+
+`marketplace add` also accepts the GitHub repo URL directly, no local clone needed. Either
+way this registers `skills/dave-r/SKILL.md` and starts the MCP server through
+[`ai/mcp/launch.py`](../ai/mcp/launch.py), which probes a short list of likely `python3`
+interpreters - including a `.venv/` or `venv/` in this checkout - for one with `pyyaml`
+and `mcp<2` importable, and execs into it: the plugin does not need to know in advance
+which interpreter on your machine has the right packages.
+[`ai/mcp/plugin.mcp.json`](../ai/mcp/plugin.mcp.json) (named there, not `.mcp.json` at the
+repo root, so opening this repo itself as a Claude Code project doesn't also auto-load it
+a second time, unsubstituted) points `DAVER_WORKSPACE` at your current project directory,
+the allowlist root described below.
+
+**Cowork**: zip the repo and add it in chat, where it renders as an installable card:
+
+```bash
+cd /absolute/path/to/DAVE-R && zip -qr /tmp/dave-r.plugin . -x '.git/*' -x '.DS_Store'
+```
+
+Attach `dave-r.plugin` to a Cowork conversation and accept the install prompt.
+
+See [Skill, MCP server, or plugin, which?](#skill-mcp-server-or-plugin-which) below for how
+the skill behaves when the MCP tools happen to also be loaded in the same session.
+
+## 3. As a skill, standalone (Claude Code, Cowork)
 
 Build a self-contained skill package. It bundles its own copy of `spec/` and the engine,
 so it runs with no checkout of this repo:
@@ -81,14 +118,18 @@ shells out to the bundled CLI, so `pyyaml` still needs to be importable by whate
 Python the environment uses.
 
 Cowork does not read `~/.claude/skills/`. Cowork sessions load skills enabled on the
-claude.ai account, synced at session start and managed from Customize in the desktop
-sidebar or skills settings on claude.ai, not from a file you unpack yourself. Until this
-skill ships as a Cowork plugin, the packaged-skill path above is for Claude Code only.
+claude.ai account, synced at session start, plus skills bundled in an installed plugin -
+managed from Customize in the desktop sidebar or skills settings on claude.ai, not from a
+file you unpack yourself. The `.skill` zip above is for Claude Code; for Cowork, install
+the plugin (§2) instead, or use the in-place path below in either product.
 
 Using it in place from a checkout works too, in either product: point the agent at
-`ai/skills/dave-r/SKILL.md`.
+`skills/dave-r/SKILL.md`.
 
-## 3. As an MCP server
+## 4. As an MCP server, standalone
+
+The plugin (§2) wires this automatically via `ai/mcp/launch.py`. To configure it by hand
+instead, against a bare checkout or a client the plugin format does not cover:
 
 ```bash
 pip install pyyaml "mcp<2" jsonschema referencing
@@ -123,9 +164,10 @@ different platform or Python version legitimately needs different wheels, and
 Works with any MCP client. `DAVER_WORKSPACE` is an allowlist root: cycle paths arrive as
 untrusted tool input, so they are resolved inside it and traversal is rejected.
 
-## Skill or MCP server, which?
+## Skill, MCP server, or plugin, which?
 
-Neither requires the other, and running both is fine but redundant.
+Neither the skill nor the MCP server requires the other, and running both is fine but
+redundant on its own - which is what the plugin is for.
 
 - **Skill**: the agent reads your project, drafts the artifacts, and runs the gates by
   calling the CLI. Best when the agent has filesystem access to the repo you are securing.
@@ -134,6 +176,14 @@ Neither requires the other, and running both is fine but redundant.
   client has no shell, or when several clients or people share one cycle store. It never
   enables exec resolvers, and `DAVER_WORKSPACE` confines cycle paths, resolver reads and
   the trust anchor alike.
+- **Plugin**: installs both in one step. They still run independently - the MCP server is
+  a stateless tool provider with no knowledge of the skill or of anything else calling it -
+  but the skill's own instructions prefer calling its MCP tools over shelling out to the
+  CLI when a session happens to have both loaded (same gate evaluation either way, one
+  fewer process spawned). That preference lives entirely in the skill's instructions; there
+  is no reverse direction for it to hold in, because the MCP server has no notion of "the
+  skill" to prefer or defer to. Either half missing, the other runs exactly as it does
+  standalone.
 
 Both execute the same gate files from `spec/`, so a cycle checked by one is checked
 identically by the other.
