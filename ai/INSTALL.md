@@ -30,8 +30,23 @@ Optional, and only for the feature named:
 | `ssh-keygen` | detached signatures (gate X-2) | X-2 reports unsigned. Ships with macOS and Linux. |
 
 There are no network calls anywhere in the engine, the CLI or the skill. The MCP server
-speaks stdio to its client and reaches nothing else. The shipped resolvers read local
-files and run operator-declared commands; no telemetry resolver ships enabled.
+speaks stdio to its client and reaches nothing else.
+
+### Resolvers that run commands
+
+Only the `file` resolver is registered by default. The `exec` resolver runs commands
+declared in `.daver/resolvers.json` **inside the evidence root**, which means inside the
+repository you are examining. It is therefore **off unless you turn it on**:
+
+```bash
+python3 ai/engine/daver_cli.py verify cycle.yaml --allow-exec-resolvers   # or DAVER_ENABLE_EXEC=1
+```
+
+Do not enable it against a repository you have not vetted. Even enabled, `argv[0]` is
+allowlisted against interpreters, so `["/bin/sh","-c", …]` and `["python3","-c", …]` are
+refused: an argv list whose first element is a shell is still a shell. Point a resolver at
+a purpose-built binary or a committed script. The MCP server refuses to start with exec
+resolvers enabled at all.
 
 ## 1. CLI only
 
@@ -92,8 +107,9 @@ Neither requires the other, and running both is fine but redundant.
   calling the CLI. Best when the agent has filesystem access to the repo you are securing.
   This is the richer experience, because discovery is most of the value.
 - **MCP server**: exposes the lifecycle as 11 typed tools to any MCP client. Best when the
-  client has no shell, when several clients or people share one cycle store, or when you
-  want the tool boundary to be the security boundary.
+  client has no shell, or when several clients or people share one cycle store. It never
+  enables exec resolvers, and `DAVER_WORKSPACE` confines cycle paths, resolver reads and
+  the trust anchor alike.
 
 Both execute the same gate files from `spec/`, so a cycle checked by one is checked
 identically by the other.
@@ -104,7 +120,52 @@ identically by the other.
 | :--- | :--- | :--- |
 | `DAVER_SPEC` | all | path to `spec/`; defaults to the copy next to the engine |
 | `DAVER_WORKSPACE` | MCP server | allowlist root for cycle documents |
-| `DAVER_EVIDENCE_ROOT` | resolvers, signatures | root for `file`/`exec` resolvers and `.daver/allowed_signers` |
+| `DAVER_EVIDENCE_ROOT` | resolvers | fallback containment root when a caller passes none. Prefer `--evidence-root`. |
+| `DAVER_ENABLE_EXEC` | resolvers | set to `1` to enable command-running resolvers. Off by default. |
+| `DAVER_ALLOWED_SIGNERS` | signatures | trust anchor path. Refused if it resolves inside the audited workspace. |
+
+## Where the trust anchor lives
+
+Signature verification (gate X-2) needs an `allowed_signers` file. It must live **outside**
+the workspace being examined, because an agent that can write the anchor can add its own
+key and forge a human sign-off. Default search order:
+
+1. `--allowed-signers` / `DAVER_ALLOWED_SIGNERS`
+2. `~/.config/daver/allowed_signers`
+3. `~/.daver/allowed_signers`
+
+Any candidate inside the audited workspace is refused. Public keys are not secrets, so the
+recommended pattern is to commit your own `allowed_signers` to your own repository and
+verify against that committed copy in CI.
+
+## Do I need a logging or telemetry backend?
+
+**No, not to use DAVE+R.** Evidence typing, the gates, signatures and the audit chain all
+work with no telemetry integration at all.
+
+What a resolver buys you is the ability to *re-run* a recorded measurement and confirm it
+still holds. Without one, a value marked `observed` is taken at its word.
+
+| Profile | Unwired telemetry system | Source a resolver ran and could not find |
+| :--- | :--- | :--- |
+| `baseline` | not applicable | blocks |
+| `agent-operated` | not applicable | blocks |
+| `regulated` | **blocks** | blocks |
+
+So `agent-operated` still catches the case the gate exists for — an agent citing a source
+that does not exist on a system you *can* reach — without demanding you stand up a backend
+first. A system with no registered resolver is a gap in your setup, not evidence of a lie,
+and blocking on it would punish the wrong party.
+
+Be clear-eyed about the residual: you cannot detect a fabricated source for a system you
+have no way to reach, and an agent could in principle cite an unwired system to dodge
+verification. X-3 names the unverified values and their systems in its reason for exactly
+that reason, so the gap is visible rather than silent. Wire up resolvers for the systems
+you actually use, then move to `regulated`, which requires every observed value to be
+re-runnable.
+
+Writing one is small: a resolver is a function taking `(source, root)` and returning a
+value. See `ai/engine/daver/resolvers.py`; `file` is about thirty lines.
 
 ## Verify your install
 

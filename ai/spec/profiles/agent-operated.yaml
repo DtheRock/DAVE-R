@@ -11,3 +11,14 @@ description: >
 severity_overrides:
   X-1: blocking
   X-2: blocking
+  X-3: blocking
+options:
+  # Deliberately NOT strict. X-3 blocking means a source that a working resolver
+  # cannot find is a failure, which is the fabrication case the gate exists for.
+  # It does NOT mean you must first stand up a telemetry backend: a system with no
+  # registered resolver is an operator gap, reported as "not applicable" rather
+  # than failed, because you cannot detect a lie about a system you have no way to
+  # reach and blocking on it punishes the wrong party.
+  #
+  # Wire up resolvers for the systems you actually use, then move to `regulated`.
+  strict_resolvers: false

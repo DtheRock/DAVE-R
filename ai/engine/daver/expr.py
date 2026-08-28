@@ -26,6 +26,9 @@ class Result:
 OK = Result(True)
 VACUOUS = Result(True, vacuous=True)
 
+# Upper bound on the string handed to re.search. See the matches operator.
+MAX_MATCH_SUBJECT = 4096
+
 
 def _fail(msg: str) -> Result:
     return Result(False, msg)
@@ -64,6 +67,42 @@ def _compare(ctx: Context, a_ref: Any, b_ref: Any, op: str) -> Result:
         return OK
     sym = {"lt": "<", "lte": "<=", "gt": ">", "gte": ">=", "eq": "==", "ne": "!="}[op]
     return _fail(f"{a_ref} ({a}) {sym} {b_ref} ({b}) is false")
+
+
+def _derivation_root_problem(ref: str, ctx: Context, _seen: set | None = None) -> str | None:
+    """Walk derived_from to its roots. One hop is not enough.
+
+    Checking only direct parents means asserted -> derived -> derived launders an
+    assertion into evidence with a single extra hop. A derivation that cannot name
+    resolvable parents is not a derivation either, so an unresolvable parent fails
+    rather than falling through to a string literal.
+    """
+    seen = _seen if _seen is not None else set()
+    if ref in seen:
+        return f"{ref} has a circular derivation"
+    seen.add(ref)
+
+    node = ctx.resolve_node(ref)
+    if node is MISSING or node is None:
+        return f"derivation references {ref}, which does not resolve"
+    prov = provenance_of(node)
+    if prov is None:
+        return f"derivation references {ref}, which carries no provenance"
+    if prov == "asserted":
+        return f"derivation roots in asserted value {ref}; evidence laundering"
+    if prov == "unmeasured":
+        return f"derivation roots in unmeasured value {ref}"
+    if prov == "observed":
+        return None
+
+    parents = node.get("derived_from") or []
+    if not parents:
+        return f"{ref} is derived but names no parents"
+    for parent in parents:
+        problem = _derivation_root_problem(parent, ctx, seen)
+        if problem:
+            return problem
+    return None
 
 
 def evaluate(expr: Any, ctx: Context) -> Result:
@@ -173,7 +212,11 @@ def evaluate(expr: Any, ctx: Context) -> Result:
         v = ctx.resolve(ref)
         if not isinstance(v, str):
             return _fail(f"{ref} is not a string")
-        return OK if re.search(pattern, v) else _fail(f"{ref} ('{v}') does not match /{pattern}/")
+        # Python's re has no timeout and adapter patterns are third-party. Cap the
+        # subject so a catastrophically-backtracking pattern cannot hang the run.
+        subject = v[:MAX_MATCH_SUBJECT]
+        return OK if re.search(pattern, subject) else _fail(
+            f"{ref} ('{subject[:60]}') does not match /{pattern}/")
 
     # --- evidence typing (the spec's central rule) ---------------------------
     if op == "provenance_in":
@@ -199,10 +242,9 @@ def evaluate(expr: Any, ctx: Context) -> Result:
             if not src.get("system") or not src.get("ref"):
                 return _fail(f"{ref} claims observed but has no re-runnable source")
         if p == "derived":
-            for parent in node.get("derived_from", []):
-                pn = ctx.resolve_node(parent)
-                if provenance_of(pn) == "asserted":
-                    return _fail(f"{ref} is derived from asserted value {parent}; evidence laundering")
+            bad = _derivation_root_problem(ref, ctx)
+            if bad:
+                return _fail(bad)
         return OK
 
     # --- iteration -----------------------------------------------------------

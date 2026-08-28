@@ -1,0 +1,23 @@
+# Hash-pinned so a moved tag or one compromised release cannot alter the job
+# whose output IS the security control.
+#
+# Resolved for the CI platform only (ubuntu-latest, CPython 3.11, wheels).
+# Regenerate after changing a version:
+#   pip download -r ai/requirements-ci.txt -d /tmp/w --python-version 3.11 --only-binary :all:
+#   then sha256 each wheel.
+#
+# The engine itself needs only PyYAML. pytest and its dependencies are here
+# because CI runs the test suite; a consumer running only the gates needs the
+# first entry alone.
+
+PyYAML==6.0.2 \
+    --hash=sha256:3ad2a3decf9aaba3d29c8f537ac4b243e36bef957511b4766cb0057d32b0be85
+
+pytest==8.3.4 \
+    --hash=sha256:50e16d954148559c9a74109af1eaf0c945ba2d8f30f0a3d3335edde19788b6f6
+iniconfig==2.3.0 \
+    --hash=sha256:f631c04d2c48c52b84d0d0549c99ff3859c98df65b3101406327ecc7d53fbf12
+packaging==26.3 \
+    --hash=sha256:d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c
+pluggy==1.6.0 \
+    --hash=sha256:e920276dd6813095e9377c0bc5566d94c932c33b27a3e3945d8389c374dd4746

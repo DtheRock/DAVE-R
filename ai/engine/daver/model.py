@@ -57,6 +57,10 @@ def parse_time(v: Any) -> _dt.datetime | None:
     return None
 
 
+class UnresolvedRef(Exception):
+    """A reference whose root is not a known artifact. Only raised in strict mode."""
+
+
 @dataclass
 class Context:
     """One evaluation context: the cycle plus whatever loop bindings are active."""
@@ -64,11 +68,12 @@ class Context:
     adapter: dict = field(default_factory=dict)
     bindings: dict = field(default_factory=dict)
     now: _dt.datetime = field(default_factory=lambda: _dt.datetime.now(_dt.timezone.utc))
+    strict: bool = False
 
     def bind(self, **kw) -> "Context":
         b = dict(self.bindings)
         b.update(kw)
-        return Context(self.cycle, self.adapter, b, self.now)
+        return Context(self.cycle, self.adapter, b, self.now, self.strict)
 
     # ---- reference resolution -------------------------------------------------
 
@@ -91,7 +96,14 @@ class Context:
             root = self.cycle.get(head, MISSING)
             path = rest
         else:
-            # Not a ref shape we recognise: treat as a literal string.
+            # Not a ref shape we recognise. Under strict resolution this is an
+            # authoring error and must surface; at runtime it is a literal.
+            #
+            # Returning the ref as a string was a silent fail-open: a misspelled
+            # root ("validatoin_plan.x") became a non-empty string, so `exists`
+            # passed and `ne` passed, and a broken gate reported as a passing one.
+            if self.strict:
+                raise UnresolvedRef(ref)
             return ref
 
         return self._walk(root, path)

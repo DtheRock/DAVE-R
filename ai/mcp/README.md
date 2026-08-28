@@ -46,13 +46,24 @@ they are resolved inside it and traversal is rejected.
 
 ## Security posture
 
-- **Read-only with respect to production.** Never reaches a WAF, cloud API, or
-  deployment pipeline. It reads and checks documents.
+- **Executes no commands.** Exec resolvers are never enabled here, and the server
+  **refuses to start** if the environment tries to turn them on. A tool surface driven
+  by a language model acting on content it discovered is the last place to accept a
+  config-file-to-`subprocess` path.
+- **Reaches no production system.** No WAF, no cloud API, no deployment pipeline. It
+  reads and checks documents.
 - **Cannot authorize enforcement.** No tool writes an approval signature.
   `daver_request_authorization` prepares what a named human must sign, out of band.
-- **Path traversal rejected.** Cycle paths resolve inside `DAVER_WORKSPACE` only.
+- **One boundary.** `DAVER_WORKSPACE` confines cycle paths, resolver file reads and the
+  signature trust anchor alike, via `realpath`; traversal and symlinks are both refused.
 - **Fails closed.** A malformed or unknown gate expression evaluates to FAIL. A gate
   that errors open is worse than no gate.
+
+> **Corrected in 1.1.1.** Earlier versions of this file claimed the server was
+> "read-only with respect to production" while `daver_check` could execute arbitrary
+> local commands, and claimed `DAVER_WORKSPACE` confined the server while the resolver
+> layer read a different variable defaulting to the process working directory. Both
+> claims were false. The behaviour now matches the description.
 
 ## CI
 
