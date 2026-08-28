@@ -1,0 +1,72 @@
+name: DAVE+R gates
+
+# Runs the lifecycle gates on every cycle document in the repo. A security change
+# that has not earned enforcement fails the PR, which is the point: the discipline
+# should be enforced by the pipeline, not by whoever remembers to run the CLI.
+
+on:
+  pull_request:
+    paths: ['**/*.cycle.yaml', 'ai/spec/**', 'ai/engine/**']
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 7 * * 1'   # Monday exception sweep
+
+permissions:
+  contents: read
+
+jobs:
+  gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - run: pip install pyyaml jsonschema referencing
+
+      - name: Spec self-lint
+        run: python3 ai/engine/daver_cli.py lint
+
+      - name: Engine tests
+        run: |
+          pip install pytest
+          python3 -m pytest ai/engine/tests -q
+
+      - name: Run gates on every cycle document
+        run: |
+          shopt -s globstar nullglob
+          failed=0
+          found=0
+          for c in **/*.cycle.yaml; do
+            case "$c" in ai/engine/tests/fixtures/scenario*) continue ;; esac
+            found=1
+            echo "::group::$c"
+            python3 ai/engine/daver_cli.py check "$c" --profile "${DAVER_PROFILE:-agent-operated}" || failed=1
+            echo "::endgroup::"
+          done
+          [ "$found" = 1 ] || echo "no cycle documents found"
+          exit $failed
+        env:
+          DAVER_PROFILE: agent-operated
+
+      - name: Exception sweep
+        if: always()
+        run: python3 ai/engine/daver_cli.py sweep . --window 30 || true
+
+  conformance:
+    # Only meaningful when an agent-produced cycle is committed for review.
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - run: pip install pyyaml
+      - name: Agent conformance evals
+        run: |
+          shopt -s nullglob
+          for c in ai/evals/cases/*.yaml; do
+            echo "case: $c"
+          done
+          echo "Attach an agent-produced cycle and run:"
+          echo "  python3 ai/evals/run.py <case> <produced.cycle.yaml>"

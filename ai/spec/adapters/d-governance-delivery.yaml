@@ -1,0 +1,94 @@
+id: d-governance-delivery
+name: Module D - Governance and Delivery
+purpose: Governance as a product feature. Change is reviewed, logged, reversible and owned.
+
+planes: [ci-cd, application, identity, network, edge, waf, data]
+
+telemetry_systems: [github, gitlab, jira, servicenow, pagerduty, datadog]
+
+min_shadow_days:
+  planned: 3
+  expedited: 1
+  emergency: 0.25
+backfill_window_days: 5
+
+signal_vocabulary:
+  - change_failure_rate
+  - mttr
+  - exception_count
+  - exception_age
+  - policy_complexity
+  - emergency_change_ratio
+  - review_cadence_adherence
+
+discovery:
+  sources:
+    - kind: vcs
+      extracts: [change_history, revert_rate, review_coverage, time_to_merge]
+    - kind: ticketing
+      extracts: [change_records, incident_links, approval_chains]
+    - kind: oncall
+      extracts: [escalation_paths, rotation_ownership]
+  infers:
+    - execution.change_record
+    - definition_brief.raci.responsible
+    - refinement_log.complexity_trend
+  must_ask_human:
+    - definition_brief.raci.accountable
+    - risk acceptance for any exception
+    - review cadence commitments
+
+gates:
+  - id: D-D1
+    name: change-has-all-five
+    severity: blocking
+    rationale: >
+      The module's own minimum governance requirement, made executable. An agent can produce
+      four of these five. It can never produce the risk owner.
+    assert:
+      all:
+        - exists: definition_brief.raci.accountable.identity
+        - exists: definition_brief.triage.justification
+        - exists: execution.change_record
+        - min_items: [control_matrix.controls, 1]
+        - each:
+            in: control_matrix.controls
+            satisfies:
+              all:
+                - exists: item.telemetry.source
+                - exists: item.rollback.procedure
+    remediation: Every change needs an owner, rationale, risk assessment, telemetry links and a rollback plan.
+
+  - id: D-D2
+    name: emergency-ratio-monitored
+    severity: advisory
+    added_in: 1.0.0
+    rationale: >
+      An emergency lane is necessary, and it is also the lane that eats governance if nobody
+      watches its share. A rising emergency ratio means the planned path is too slow, which is
+      a process defect, not a series of unlucky incidents.
+    assert:
+      exists: refinement_log.complexity_trend.control_count
+    remediation: Track the fraction of changes taking the emergency track and review it monthly.
+
+  - id: D-D3
+    name: review-cadence-adhered
+    severity: blocking
+    rationale: Weekly telemetry review, monthly exception review, quarterly architecture review. Cadence that is not measured does not happen.
+    assert:
+      all:
+        - exists: refinement_log.drift_check.last_run
+        - gte: [refinement_log.drift_check.last_run, "$now-90d"]
+    remediation: Record each review when it happens. A cadence with no evidence of adherence is a plan, not a practice.
+
+  - id: D-D4
+    name: agent-actions-audited
+    severity: blocking
+    added_in: 1.0.0
+    rationale: >
+      Once an agent participates in the lifecycle, "auditable end to end" has to cover what the
+      agent did, not only what the humans approved. Every gate run and every artifact write is
+      appended to the cycle audit trail.
+    assert:
+      min_items: [audit, 1]
+    remediation: Append every agent action and gate run to the cycle audit log.

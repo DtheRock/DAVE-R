@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://daver.dev/spec/1.1.0/adapter.schema.json",
+  "title": "DAVE+R Adapter",
+  "description": "A domain adapter. The lifecycle and core gates stay constant; an adapter supplies the planes, telemetry, signals, shadow minimums and any domain-specific gates. Writing one is how a team extends DAVE+R without forking it.",
+  "type": "object",
+  "required": ["id", "name", "purpose", "planes", "telemetry_systems", "min_shadow_days", "discovery"],
+  "properties": {
+    "id": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+    "name": { "type": "string" },
+    "purpose": { "type": "string" },
+    "planes": { "type": "array", "minItems": 1, "items": { "$ref": "common.schema.json#/$defs/plane" } },
+    "telemetry_systems": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+
+    "min_shadow_days": {
+      "type": "object",
+      "description": "Per triage track. Emergency may be fractional. These are the numbers a shortened window is measured against, so set them from your own incident history rather than copying another domain's.",
+      "required": ["planned", "expedited", "emergency"],
+      "properties": {
+        "planned": { "type": "number", "exclusiveMinimum": 0 },
+        "expedited": { "type": "number", "exclusiveMinimum": 0 },
+        "emergency": { "type": "number", "minimum": 0 }
+      }
+    },
+    "backfill_window_days": { "type": "integer", "minimum": 1 },
+
+    "signal_vocabulary": { "type": "array", "items": { "type": "string" } },
+    "correlated_signal_groups": {
+      "type": "object",
+      "description": "Signals inside a group travel together and must not be treated as independent evidence. Required in practice for any scoring adapter.",
+      "properties": {
+        "description": { "type": "string" },
+        "groups": {
+          "type": "array",
+          "items": {
+            "type": "object", "required": ["name", "members"],
+            "properties": { "name": { "type": "string" },
+                            "members": { "type": "array", "items": { "type": "string" } } }
+          }
+        }
+      }
+    },
+
+    "discovery": {
+      "type": "object",
+      "required": ["sources", "infers", "must_ask_human"],
+      "description": "The discovery-first contract. Anything in must_ask_human is judgement or risk acceptance and an agent may never author it, however plainly a discovered file appears to state it.",
+      "properties": {
+        "sources": {
+          "type": "array", "minItems": 1,
+          "items": {
+            "type": "object", "required": ["kind"],
+            "properties": {
+              "kind": { "enum": ["iac", "config", "api", "repo", "vcs", "policy", "warehouse", "ticketing", "oncall"] },
+              "globs": { "type": "array", "items": { "type": "string" } },
+              "calls": { "type": "array", "items": { "type": "string" } },
+              "system": { "type": "string" },
+              "extracts": { "type": "array", "items": { "type": "string" } }
+            }
+          }
+        },
+        "infers": { "type": "array", "items": { "type": "string" } },
+        "must_ask_human": { "type": "array", "minItems": 1, "items": { "type": "string" } }
+      }
+    },
+
+    "gates": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "severity", "remediation"],
+        "oneOf": [{ "required": ["assert"] }, { "required": ["check"] }],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+          "severity": { "enum": ["blocking", "advisory"] },
+          "stage": { "enum": ["define", "architect", "validate", "execute", "refine"] },
+          "requires_evidence": { "type": "boolean" },
+          "added_in": { "type": "string" },
+          "rationale": { "type": "string" },
+          "assert": { "type": "object" },
+          "check": { "type": "string" },
+          "remediation": { "type": "string" }
+        }
+      }
+    }
+  }
+}

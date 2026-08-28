@@ -1,0 +1,193 @@
+# Faithful encoding of scenario2.md ("Defeating Credential Stuffing Without Killing
+# Conversion") from github.com/DtheRock/DAVE-R, as published.
+#
+# Same rule: only what the scenario states. Absences are the finding. This one
+# exercises the Module C (Bayesian) adapter, where the published text is thinnest.
+spec_version: "1.0.0"
+cycle_id: globalretail-ato
+adapter: c-bot-fraud
+stage: execute
+
+definition_brief:
+  name: Defeat credential stuffing on login without killing conversion
+  date: "2026-02-13"
+  status: active
+  asset:
+    target: /api/v2/login
+    traffic_scope: Web and mobile login traffic
+    critical_flows:
+      - id: mobile-login
+        description: Legitimate mobile customers behind CGNAT and iCloud Private Relay
+        business_impact_if_broken: DAU collapse and call centre flood weeks before holiday sale
+      - id: aggregator-login
+        description: Personal finance aggregator logging in programmatically for 250k customers
+        business_impact_if_broken: Severed integrations for 250,000 customers
+
+  threat_scenarios:
+    - id: THR-001
+      behaviour: Credential stuffing from millions of rotating residential proxies
+      observable_signature: Failed login spikes across many accounts from rotating residential IPs, low session entropy
+      active_now: { value: true, provenance: observed, observed_at: "2026-02-13T09:00:00Z",
+                    source: { system: splunk, ref: "index=auth failed_login", window: 7d } }
+      observed_harm: { value: "Customer loyalty accounts being drained", provenance: observed,
+                       observed_at: "2026-02-13T09:00:00Z", source: { system: splunk, ref: "index=fraud loyalty_drain", window: 7d } }
+
+  guardrails:
+    false_positive_tolerance: { value: 0.001, provenance: asserted, asserted_by: vp-ecommerce }
+    latency_budget_ms: { value: 50, provenance: asserted, asserted_by: vp-ecommerce }
+    percentile: p95
+    business_guardrails:
+      - statement: Baseline login conversion rate must not drop
+        measured_by: { system: datadog, ref: "dashboard:login-conversion" }
+      - statement: Legitimate users on shared IPs or privacy relays must not be hard-blocked
+        measured_by: { system: splunk, ref: "index=auth blocked cgnat" }
+
+  success_metrics:
+    - id: SM-1
+      statement: 95% reduction in successful ATOs
+      baseline: { provenance: unmeasured }
+      target: { value: 0.95, provenance: asserted, asserted_by: security-team }
+      measured_by: { system: splunk, ref: "index=fraud ato_confirmed" }
+
+  non_goals: []
+
+  # No triage step in the published scenario. Accounts are being drained during a
+  # 7-day shadow window, which is a defensible choice but never an explicit one.
+  triage:
+    track: planned
+    justification: { value: "VP of E-Commerce vetoed hard-blocking; needed data to break the deadlock",
+                     provenance: asserted, asserted_by: security-team }
+    harm_accruing: { value: true, provenance: observed, observed_at: "2026-02-13T09:00:00Z",
+                     source: { system: splunk, ref: "index=fraud loyalty_drain", window: 24h } }
+
+  alternatives_considered: []
+
+  raci:
+    accountable: { name: Security Team, identity: "security-team", role: Security }
+    responsible:
+      - { name: E-Commerce, identity: "ecommerce-team" }
+
+control_matrix:
+  system: Login risk scoring
+  trust_boundary:
+    zones: [internet, edge, identity, application]
+    flows:
+      - { from: internet, to: edge, authenticated: false, data_sensitivity: confidential }
+      - { from: edge, to: identity, authenticated: false, data_sensitivity: confidential }
+  controls:
+    - id: BOT-RS-01
+      intent: Bayesian risk score on login, mapped to graduated mitigations
+      plane: bot-management
+      owner: { name: Fraud Team, identity: "fraud-team" }
+      addresses: [THR-001]
+      enforcement_mode: graduated
+      parameters: { allow_below: 50, challenge_band: "50-89", block_above: 90 }
+      telemetry:
+        source: { system: splunk, ref: "index=edge_sec risk_score", window: 7d }
+        metrics: [risk_score_distribution, challenge_rate, block_rate, login_conversion]
+      rollback:
+        procedure: Set action from enforce to log-only
+        granularity: graduated
+        target_seconds: 120
+        tested: { value: true, provenance: asserted, asserted_by: fraud-team }
+
+validation_plan:
+  baseline:
+    false_positive_rate: { provenance: unmeasured }
+    latency_ms: { provenance: unmeasured }
+  shadow:
+    start: "2026-01-15T00:00:00Z"
+    end: "2026-01-22T00:00:00Z"
+    mode: log-only
+    duration_days: { value: 7, provenance: observed, observed_at: "2026-01-22T00:00:00Z",
+                     source: { system: splunk, ref: "index=edge_sec shadow", window: 7d } }
+    covers_full_weekly_cycle: true
+    findings:
+      - description: Personal finance aggregator logging in thousands of times per hour looks identical to attackers
+        would_have_blocked: { value: true, provenance: observed, observed_at: "2026-01-17T00:00:00Z",
+                              source: { system: splunk, ref: "index=edge_sec aggregator", window: 3d } }
+        action: exception-created
+        exception_id: EXC-001
+  tests:
+    - { id: T1, kind: abuse, method: Replay credential stuffing pattern, expected: High risk score,
+        result: { value: pass, provenance: observed, observed_at: "2026-01-18T00:00:00Z",
+                  source: { system: splunk, ref: "index=edge_sec abuse_test" } } }
+    - { id: T2, kind: safety, method: Normal mobile login, expected: Low risk, allowed, covers_critical_flow: mobile-login,
+        result: { value: pass, provenance: asserted, asserted_by: fraud-team } }
+    - { id: T3, kind: bypass, method: Aggregator ASN login, expected: Bypasses block, covers_critical_flow: aggregator-login,
+        result: { value: pass, provenance: asserted, asserted_by: fraud-team } }
+    - { id: T4, kind: rollback, method: Switch enforce to log-only, expected: Enforcement stops,
+        result: { value: pass, provenance: asserted, asserted_by: fraud-team } }
+  evasion_analysis:
+    # The emulator-spoofing pivot is discovered two weeks AFTER enforcement, in Refine.
+    bypasses: []
+  calibration:
+    initial_hypothesis: Block above 90
+    shadow_finding: Aggregator traffic scores high without mobile app token
+    adjusted_threshold: Recalibrated Bayesian weights, shadow FP dropped to 0.04%
+  measured:
+    false_positive_rate: { value: 0.0004, provenance: observed, observed_at: "2026-01-22T00:00:00Z",
+                           source: { system: splunk, ref: "index=edge_sec fp_rate", window: 7d } }
+    latency_delta_ms: { provenance: unmeasured }
+    rollback_tested: { value: true, provenance: asserted, asserted_by: fraud-team }
+  go_no_go: {}
+
+exception_register:
+  exceptions:
+    - id: EXC-001
+      applies_to: [BOT-RS-01]
+      scope: Personal finance aggregator backend ASNs
+      mechanism:
+        kind: asn
+        detail: Aggregator backend ASNs
+      rationale: Aggregator lacks mobile app token and is indistinguishable from attackers
+      approver:
+        decision: approved
+        by: { name: Security Team, identity: "security-team" }
+        at: "2026-01-17T00:00:00Z"
+        authored_by_agent: false
+      created: "2026-01-17"
+      expiry: "2026-07-17"
+      review_cadence: quarterly
+      reduction_plan: Migrate aggregator to OAuth API keys
+      status: retired
+
+execution:
+  rollout_stages:
+    - { name: canary, scope: 5% of traffic, abort_criteria: Monitor conversion metrics }
+    - { name: full, scope: 100% of traffic, abort_criteria: not stated }
+  change_record: Policy switched from log-only to enforce
+  runbook: not stated
+
+module:
+  # Module C's substance. The published text asserts posterior updating from a prior
+  # but never states the prior, never addresses signal correlation, never defines
+  # what "calibrated" means, and never mentions appeals or a holdout.
+  signals:
+    - { name: device_attestation_present }
+    - { name: impossible_travel_velocity }
+    - { name: headless_browser_indicator }
+    - { name: emulator_profile }
+  explainability:
+    top_factors_recorded: true
+
+refinement_log:
+  entries:
+    - date: "2026-02-05"
+      version: v1.1.0
+      kind: signal-added
+      change: Added emulator screen resolution profiling to the risk engine
+      evidence: { value: "Attackers pivoted to outdated mobile emulators to spoof app tokens",
+                  provenance: observed, observed_at: "2026-02-05T00:00:00Z",
+                  source: { system: splunk, ref: "index=edge_sec emulator", window: 14d } }
+      impact: { value: "Low-and-slow attack detected", provenance: asserted, asserted_by: fraud-team }
+    - date: "2026-07-17"
+      version: v1.2.0
+      kind: exception-retired
+      change: Retired aggregator ASN exception after OAuth migration
+      evidence: { value: "Aggregator migrated to OAuth API keys", provenance: observed,
+                  observed_at: "2026-07-17T00:00:00Z", source: { system: splunk, ref: "index=edge_sec aggregator", window: 7d } }
+      impact: { value: "System simpler and more secure", provenance: asserted, asserted_by: security-team }
+      retires: [EXC-001]
+
+audit: []

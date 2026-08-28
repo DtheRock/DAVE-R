@@ -1,0 +1,148 @@
+stage: define
+description: >
+  Turn ambiguity into an executable target. Exit means the target is concrete,
+  the guardrails are numeric, one named human owns the risk, and the urgency
+  has been triaged rather than assumed.
+
+gates:
+  - id: D-0
+    name: no-unfilled-placeholders
+    severity: blocking
+    added_in: 1.1.0
+    check: no_placeholder_values
+    rationale: >
+      Found by pointing a live agent at a fresh scaffold. `raci.accountable.identity`
+      of "TODO" satisfied D-5: it exists, and it does not match the team/group pattern.
+      A cycle that claims a named accountable human when there is none is the most
+      dangerous false pass this system can produce, because every later signature gate
+      compares against that identity. Placeholder text is now rejected wherever it can
+      reach a gate.
+    remediation: >
+      Replace every TODO, TBD, [bracketed] and <angled> placeholder with a real value,
+      or with an explicit {provenance: unmeasured} marker so the relevant gate blocks
+      honestly rather than passing on a stub.
+
+  - id: D-1
+    name: scope-is-concrete
+    severity: blocking
+    rationale: A control scoped to "the API" cannot be validated. Everything downstream binds to this.
+    assert:
+      all:
+        - exists: definition_brief.asset.target
+        - exists: definition_brief.asset.traffic_scope
+        - min_items: [definition_brief.asset.critical_flows, 1]
+    remediation: Name the exact host, path or resource, the traffic scope, and enumerate the flows that must not break.
+
+  - id: D-2
+    name: threats-are-observable
+    severity: blocking
+    rationale: >
+      DAVE+R says define threats "for the asset, not in the abstract". A threat with no
+      observable signature cannot be measured in shadow mode, so the control protecting
+      against it can never earn enforcement.
+    assert:
+      all:
+        - min_items: [definition_brief.threat_scenarios, 1]
+        - each:
+            in: definition_brief.threat_scenarios
+            satisfies:
+              all:
+                - exists: item.observable_signature
+                - not: { matches: [item.behaviour, "^(bots|attackers|bad actors|hackers|abuse)\\.?$"] }
+    remediation: For each threat, state how it appears in telemetry. If you cannot name the signal, you cannot validate the control.
+
+  - id: D-3
+    name: guardrails-are-numeric
+    severity: blocking
+    rationale: >
+      Prose guardrails are unenforceable. A tolerance of exactly zero is also rejected:
+      no statistical control can guarantee it, so declaring it guarantees a later argument
+      instead of a later measurement.
+    assert:
+      all:
+        - exists: definition_brief.guardrails.false_positive_tolerance
+        - exists: definition_brief.guardrails.latency_budget_ms
+        - gt: [definition_brief.guardrails.false_positive_tolerance, 0]
+    remediation: Declare a false positive budget as a fraction (e.g. 0.001) and a latency budget in ms at a stated percentile.
+
+  - id: D-4
+    name: metrics-have-baselines
+    severity: blocking
+    rationale: >
+      Without a pre-change baseline you cannot separate your control's false positives
+      from pre-existing failures. Every post-rollout number becomes unfalsifiable.
+    assert:
+      all:
+        - min_items: [definition_brief.success_metrics, 1]
+        - each:
+            in: definition_brief.success_metrics
+            satisfies:
+              all:
+                - exists: item.baseline
+                - exists: item.target
+                - exists: item.measured_by
+    remediation: For each success metric, record the current value and how it was measured, before any change ships.
+
+  - id: D-5
+    name: one-named-accountable-human
+    severity: blocking
+    rationale: >
+      An agent can draft a rationale, a risk assessment, telemetry links and a rollback plan.
+      It cannot own the risk. Teams cannot either: shared accountability is no accountability.
+    assert:
+      all:
+        - exists: definition_brief.raci.accountable.identity
+        - not: { matches: [definition_brief.raci.accountable.identity, "(?i)(team|group|squad|guild|ops|secops|oncall|@)$"] }
+    remediation: Name one person with an identity that resolves to an individual, not a distribution list.
+
+  - id: D-6
+    name: urgency-triaged
+    severity: blocking
+    added_in: 1.0.0
+    rationale: >
+      The lifecycle had no path for an attack already causing damage. Both published DAVE+R
+      scenarios open mid-incident and then sit in shadow mode for 5 and 7 days, which in the
+      credential-stuffing case means knowingly absorbing a week of account takeovers. That may
+      be the right call, but it must be a signed decision rather than a default.
+    assert:
+      all:
+        - exists: definition_brief.triage.track
+        - exists: definition_brief.triage.harm_accruing
+        - implies:
+            - eq: [definition_brief.triage.harm_accruing, true]
+            - all:
+                - exists: definition_brief.triage.harm_rate
+                - any:
+                    - in: [definition_brief.triage.track, [expedited, emergency]]
+                    - exists: definition_brief.triage.accepted_by
+    remediation: >
+      Set the track. If harm is accruing now and you still choose the planned track, the
+      accountable owner must sign that they are accepting the ongoing loss, and you must
+      state the cost per day of not acting.
+
+  - id: D-7
+    name: alternatives-considered
+    severity: blocking
+    added_in: 1.0.0
+    rationale: >
+      Define previously started from "we are adding a control" and never asked whether a
+      control was the right response. The scraping scenario is the clean illustration: origin
+      DB CPU spikes on a pricing endpoint, and caching, per-key quotas and requiring auth are
+      never considered. Without this gate the framework quietly nudges every problem toward
+      the edge, which undercuts the vendor-neutral claim.
+    assert:
+      all:
+        - min_items: [definition_brief.alternatives_considered, 1]
+        - any:
+            - each:
+                in: definition_brief.alternatives_considered
+                satisfies: { exists: item.rejected_because }
+    remediation: List at least one alternative on a different plane, including any root-cause fix, and say why it was rejected.
+
+  - id: D-8
+    name: non-goals-declared
+    severity: advisory
+    rationale: Scope creep during Execute is the most common cause of a blown latency budget.
+    assert:
+      min_items: [definition_brief.non_goals, 1]
+    remediation: State what this cycle explicitly does not attempt.

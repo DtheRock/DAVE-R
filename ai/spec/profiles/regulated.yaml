@@ -1,0 +1,17 @@
+id: regulated
+name: Regulated
+description: >
+  Everything blocking. Adds re-verification of every observed value against its
+  recorded source, so a claimed measurement that no longer resolves fails the cycle.
+  Requires a registered resolver per telemetry system.
+severity_overrides:
+  X-1: blocking
+  X-2: blocking
+  X-3: blocking
+  D-8: blocking
+  A-7: blocking
+  V-8: blocking
+  R-7: blocking
+options:
+  strict_resolvers: true
+  tolerance: 0.02
