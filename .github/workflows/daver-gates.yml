@@ -61,6 +61,27 @@ jobs:
           print("exec resolvers disabled:", resolvers.registered())
           PY
 
+      - name: MCP server checks
+        # The MCP server is optional (ai/mcp/requirements.txt, not the core
+        # ai/requirements-ci.txt), so it has no coverage in "Engine tests" above.
+        # Install it here and prove the documented install actually starts a
+        # server that enumerates the 11 documented tools - this is what the
+        # visitor-path audit found had zero CI coverage and could not start.
+        run: |
+          pip install --require-hashes -r ai/mcp/requirements.txt
+          python3 -m pytest ai/engine/tests -q -k mcp
+          python3 - <<'PY_EOF'
+          import sys, asyncio
+          sys.path.insert(0, "ai/mcp")
+          import server
+          tools = asyncio.run(server.mcp.list_tools())
+          names = sorted(t.name for t in tools)
+          assert len(names) == 11, f"expected 11 tools, got {len(names)}: {names}"
+          print(f"MCP server: {len(names)} tools enumerated OK: {names}")
+          PY_EOF
+        env:
+          DAVER_WORKSPACE: ${{ github.workspace }}
+
       - name: Run gates on every cycle document
         run: |
           shopt -s globstar nullglob
