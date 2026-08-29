@@ -9,3 +9,4 @@ dist/
 
 # working file, not part of the project
 PR_BODY.md
+.DS_Store
