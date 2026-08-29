@@ -6,6 +6,53 @@ own Versioning section.
 
 ---
 
+## [1.2.1] - 2026-08-29
+
+A live cycle got an accountable owner stuck: D-3 requires a numeric `latency_budget_ms`,
+the owner said "I am not sure" and then "calculate it yourself," and the skill just
+repeated the question. D-3 cannot be waived - V-5 later checks the measured latency
+delta against exactly that number, so a hollow D-3 would just relocate the same
+unenforceable promise downstream - but nothing told the agent it was allowed to help,
+or gave it an honest way to record a genuine gap instead of stalling.
+
+### Fixed
+
+- **Guardrails were being treated like measured evidence, and a gap had no transparent
+  form (medium).** `SKILL.md`'s "one rule that matters most" said "do not estimate, do
+  not infer a plausible number" with no scope on it, even though `evidence.md` has
+  always classified guardrails (`latency_budget_ms`, `false_positive_tolerance`) as
+  judgement calls an agent may draft for human confirmation - the same
+  discover-then-confirm pattern already used for observed values. And when a human
+  genuinely can't commit to one, the framework already has the mechanism for that -
+  `unmeasured`, the same marker D-0 already tells agents to use for any unresolved
+  required field - but `evidence.md` described it as scoped to "evidence," which
+  undersold it. `SKILL.md` and both `evidence.md` copies now say both things plainly,
+  with a worked example: ask what the human would notice, ask their rough baseline,
+  propose a number with the reasoning attached, record it `asserted` once they confirm;
+  if they still can't, mark it `unmeasured` with a `note` on what was tried, say
+  plainly which gates stay blocked, and move on to whatever the cycle doesn't need it
+  for - not a repeated question.
+- **An unmeasured value's `note` never reached the human (low, but the point of the fix
+  above).** `daver_check`, `daver_check_json`, `daver_next_actions` and the CLI all
+  render `GateResult.reason`, built in `expr.py` - and every unmeasured-related reason
+  string discarded the value's `note`, even when an agent had written a careful
+  explanation of what it tried. `exists`, `provenance_in` and the `lt`/`lte`/`gt`/`gte`
+  family now append the note when one is present, at the single place all of them
+  construct that message - so "transparent, not a silent block" reaches the CLI, the
+  skill and the MCP server identically, with no server-side change required.
+
+### Verification
+
+- 129 tests pass (122 prior + 7 new covering note surfacing through `exists`,
+  `provenance_in`, and both sides of a `lte` comparison, plus a check that an unrelated
+  value's `note` never leaks into an unrelated failure); 1 skipped, unchanged.
+- Spec lints clean.
+- Confirmed by reading the call path, not by assumption: `ai/mcp/server.py`'s tools all
+  call the same `Spec.run()` / `GateResult.reason` the CLI does, so this needed no
+  server change to reach the MCP surface.
+
+---
+
 ## [1.2.0] - 2026-08-28
 
 Packaged the skill and the MCP server as one installable plugin for Claude Code and

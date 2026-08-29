@@ -10,7 +10,7 @@ defenses, and the governance that keeps all of it maintainable.
 
 Vendor-neutral by design. The differentiator is not a product, it is disciplined execution.
 
-**Current version: v1.2.0** ([changelog](CHANGELOG.md))
+**Current version: v1.2.1** ([changelog](CHANGELOG.md))
 
 ---
 
