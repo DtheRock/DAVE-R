@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "dave-r": {
+      "command": "python3",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/ai/mcp/launch.py"],
+      "env": {
+        "DAVER_WORKSPACE": "${CLAUDE_PROJECT_DIR}",
+        "DAVER_SPEC": "${CLAUDE_PLUGIN_ROOT}/ai/spec"
+      }
+    }
+  }
+}
