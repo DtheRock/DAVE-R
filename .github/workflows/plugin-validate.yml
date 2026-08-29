@@ -1,0 +1,49 @@
+name: Plugin validate
+
+# Read-only check that a plugin release, if this PR bumps the version, would
+# actually be valid and consistent before it merges. Runs on pull_request (not
+# pull_request_target) with contents: read and no secrets, so it is safe to run
+# on a fork's PR - see the security notes in daver-gates.yml for why that trigger
+# choice matters. This job never writes anything and never pushes a tag; that
+# happens only in plugin-release.yml, only after merge to main.
+
+on:
+  pull_request:
+    paths:
+      - '.claude-plugin/**'
+      - 'daver.json'
+      - 'ai/spec/VERSION'
+      - 'CHANGELOG.md'
+      - 'skills/**'
+      - 'ai/mcp/**'
+      - 'scripts/check_version_consistency.py'
+      - '.github/workflows/plugin-validate.yml'
+      - '.github/workflows/plugin-release.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with: { persist-credentials: false }
+
+      - name: Install claude CLI
+        # ubuntu-latest ships a recent Node.js already, so installing straight
+        # into it avoids pinning a second action's SHA for a Node version this
+        # step doesn't otherwise care about. Version pinned deliberately, not
+        # @latest, matching how ai/requirements-ci.txt pins Python deps by hash;
+        # confirmed present on the npm registry when this workflow was written.
+        # Bump it with plugin-release.yml's matching pin, together.
+        run: npm install -g @anthropic-ai/claude-code@2.1.251
+
+      - name: Version consistency across plugin.json, daver.json, VERSION, CHANGELOG
+        run: python3 scripts/check_version_consistency.py
+
+      - name: Plugin and marketplace manifest validation
+        run: claude plugin validate . --strict
+
+      - name: Report what a release would tag (prints only, creates nothing)
+        run: claude plugin tag --dry-run
