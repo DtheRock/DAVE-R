@@ -29,6 +29,15 @@ This is not bureaucracy. A language model will produce a confident false positiv
 rate as readily as a true one, and the entire framework rests on the difference.
 Read `references/evidence.md` before writing any value.
 
+That rule is about *measured* quantities - the things a Validate or Execute gate
+reads to decide whether enforcement is earned. Guardrails are different: a false
+positive tolerance or a latency budget is a judgement call the human owns, which
+means it is legitimately `asserted`, and you may draft a proposed number for them
+to confirm the same way you draft observed values in step 1. If they still cannot
+commit to one after that, write `{provenance: unmeasured}` with a `note` on what
+you tried, say plainly what stays blocked, and move on - do not ask the same
+question twice.
+
 ## MCP tools, if you have them
 
 If tools named `daver_list_adapters`, `daver_check`, and the like are available to you
@@ -117,6 +126,12 @@ Only what you cannot observe. Six questions, plus any module-specific ones:
 4. Who personally owns this risk? One name, not a team.
 5. Is damage happening right now? If yes, what does a day of not acting cost?
 6. What is explicitly out of scope?
+
+Questions 2 and 3 set guardrails, not measurements. If the human cannot answer
+right away, help them get to a number - anchor on what they do know, propose one,
+ask them to confirm - rather than repeating the question. If they still cannot
+commit, mark it `unmeasured` with a note and move on to what else the cycle does
+not need it for. See `references/evidence.md`.
 
 Question 5 is the triage gate. If harm is accruing and the team still wants the
 planned track, the accountable owner must sign that they are choosing to absorb the

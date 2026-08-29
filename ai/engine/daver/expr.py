@@ -40,12 +40,25 @@ def _num(v: Any):
     return v if isinstance(v, (int, float)) else None
 
 
+def _note_suffix(node: Any) -> str:
+    """Surface an author's note on an unmeasured value, so a flagged gap reads as
+    transparent in the failure reason instead of a bare 'unmeasured'. A guardrail
+    the human could not yet commit to, and a measured quantity nobody could
+    observe, both go through this: the note is where the agent records what it
+    tried, so the block explains itself to whoever reads it next."""
+    if is_evidence(node):
+        note = node.get("note")
+        if note:
+            return f" ({note})"
+    return ""
+
+
 def _compare(ctx: Context, a_ref: Any, b_ref: Any, op: str) -> Result:
     a, b = ctx.resolve(a_ref), ctx.resolve(b_ref)
     if a is MISSING:
-        return _fail(f"{a_ref} is missing or unmeasured")
+        return _fail(f"{a_ref} is missing or unmeasured{_note_suffix(ctx.resolve_node(a_ref))}")
     if b is MISSING:
-        return _fail(f"{b_ref} is missing or unmeasured")
+        return _fail(f"{b_ref} is missing or unmeasured{_note_suffix(ctx.resolve_node(b_ref))}")
 
     ta, tb = parse_time(a), parse_time(b)
     if ta and tb and not (_num(a) is not None and _num(b) is not None):
@@ -160,7 +173,7 @@ def evaluate(expr: Any, ctx: Context) -> Result:
         if node is MISSING or node is None:
             return _fail(f"{arg} is not set")
         if is_evidence(node) and provenance_of(node) == "unmeasured":
-            return _fail(f"{arg} is explicitly unmeasured")
+            return _fail(f"{arg} is explicitly unmeasured{_note_suffix(node)}")
         if unwrap(node) is MISSING:
             return _fail(f"{arg} has no value")
         if isinstance(node, (list, dict, str)) and len(node) == 0:
@@ -235,7 +248,8 @@ def evaluate(expr: Any, ctx: Context) -> Result:
                     f"and requires {'/'.join(allowed)}. Measure it, do not state it."
                 )
             if p == "unmeasured":
-                return _fail(f"{ref} is unmeasured. The gate blocks rather than estimating.")
+                return _fail(f"{ref} is unmeasured. The gate blocks rather than estimating."
+                             f"{_note_suffix(node)}")
             return _fail(f"{ref} provenance is '{p}', requires {'/'.join(allowed)}")
         if p == "observed":
             src = node.get("source") or {}

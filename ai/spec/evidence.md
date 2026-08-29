@@ -17,7 +17,12 @@ plausible number.
 | `derived` | Computed from other values in this cycle. | `derived_from` (list of refs), `method` (the expression used) |
 
 A fourth marker, `unmeasured`, is not a provenance. It is the explicit absence
-of evidence, and it is always a gate blocker where evidence is required.
+of a required value, and it always blocks the gate that needs it - whether the
+missing value is evidence a gate could not observe, or a guardrail a human has
+not yet committed to (D-3's `latency_budget_ms` and `false_positive_tolerance`
+are the common case). Blocking on `unmeasured` is not a lesser failure than
+blocking on a missing field; it is the honest version of the same block, and
+the `note` companion is where the agent records what it tried.
 
 ## Why the split exists
 
@@ -32,7 +37,10 @@ provenance field moves that check from social to structural.
 Judgement calls only. Guardrails, tolerances, risk acceptance, ownership,
 non-goals, business impact, triage track, and sign-off. These are the things a
 human is *supposed* to decide, and an agent must never author them on a human's
-behalf.
+behalf. An agent may still draft a proposed value and ask the human to confirm,
+adjust, or reject it, the same discover-then-confirm pattern used for observed
+values - proposing is not authoring, provided what gets recorded is the human's
+actual answer, `asserted_by` them.
 
 ## What may never be asserted
 
@@ -62,3 +70,10 @@ laundered cleanly. Fixed in 1.1.1.)*
    even if they say they read it off a dashboard. Ask for the query.
 4. Surface every `unmeasured` field in the cycle status before proposing to
    advance a stage.
+5. A guardrail a human cannot yet commit to is not a reason to stall: draft a
+   proposed value from whatever they do know and ask them to confirm it; if
+   they still cannot, mark it `unmeasured` with a `note` on what was tried, say
+   plainly which gates stay blocked because of it, and keep working on
+   whatever the cycle does not need it for. Do not ask the same question on a
+   loop. See the skill's `references/evidence.md` for the full protocol and a
+   worked example.
