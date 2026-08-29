@@ -1,0 +1,104 @@
+name: Plugin release
+
+# Runs only after a version bump has already merged to main - i.e. only on code
+# that has been through review, never against an open pull_request. That is
+# deliberate: this job needs contents: write to push a release tag and publish a
+# GitHub Release, and combining a privileged token with untrusted code is exactly
+# the mistake daver-gates.yml's own security notes warn against for
+# pull_request_target. Splitting validation (plugin-validate.yml, pull_request,
+# read-only) from release (this file, push-to-main only, write) makes that
+# separation a file boundary instead of a conditional someone could loosen later
+# by editing one line.
+#
+# Idempotent by construction: it tags {name}--v{version} and does nothing else if
+# that tag already exists, so a push to main that didn't bump the plugin version
+# is a clean no-op, not a failure.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.claude-plugin/**'
+      - 'daver.json'
+      - 'ai/spec/VERSION'
+      - 'CHANGELOG.md'
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    if: github.repository == 'DtheRock/DAVE-R'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0   # claude plugin tag needs tag history; a shallow clone can't see existing tags
+          fetch-tags: true
+
+      - name: Install claude CLI
+        # Same pinned version as plugin-validate.yml, deliberately: the job that
+        # can push should run a CLI version someone chose, not @latest fetched
+        # fresh on every release. Check `npm view @anthropic-ai/claude-code
+        # versions` before bumping, and bump both files together.
+        run: npm install -g @anthropic-ai/claude-code@2.1.251
+
+      - name: Version consistency (defense in depth; plugin-validate.yml already checked this pre-merge)
+        run: python3 scripts/check_version_consistency.py
+
+      - name: Skip if this version is already tagged
+        id: gate
+        run: |
+          version=$(python3 -c "import json;print(json.load(open('.claude-plugin/plugin.json'))['version'])")
+          name=$(python3 -c "import json;print(json.load(open('.claude-plugin/plugin.json'))['name'])")
+          tag="${name}--v${version}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+            echo "already_tagged=true" >> "$GITHUB_OUTPUT"
+            echo "$tag already exists - this push didn't bump the version, nothing to release."
+          else
+            echo "already_tagged=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Configure git identity for the tag
+        if: steps.gate.outputs.already_tagged == 'false'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Create and push the release tag
+        if: steps.gate.outputs.already_tagged == 'false'
+        run: claude plugin tag --push
+
+      - name: Build .skill artifact
+        if: steps.gate.outputs.already_tagged == 'false'
+        run: bash ai/skills/package.sh
+
+      - name: Build .plugin artifact
+        if: steps.gate.outputs.already_tagged == 'false'
+        # Same recipe as the cowork-plugin packaging flow: zip the plugin root,
+        # excluding only what a fresh CI checkout could even have that isn't
+        # part of the plugin. No .venv or __pycache__ to exclude here the way a
+        # local build needs to - a clean checkout never has them.
+        run: zip -r "dave-r.plugin" . -x ".git/*" -x ".github/*" -x "*.DS_Store"
+
+      - name: Extract this version's CHANGELOG section for release notes
+        if: steps.gate.outputs.already_tagged == 'false'
+        id: notes
+        run: |
+          awk '/^## \[/{if (seen) exit; seen=1} seen' CHANGELOG.md > /tmp/release-notes.md
+          echo "path=/tmp/release-notes.md" >> "$GITHUB_OUTPUT"
+
+      - name: Publish GitHub Release
+        if: steps.gate.outputs.already_tagged == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.gate.outputs.tag }}" \
+            dave-r.plugin \
+            dist/dave-r.skill \
+            --title "dave-r ${{ steps.gate.outputs.version }}" \
+            --notes-file "${{ steps.notes.outputs.path }}"
