@@ -1,0 +1,21 @@
+{
+  "name": "dave-r",
+  "owner": {
+    "name": "Demetrios Petropoulos",
+    "url": "https://github.com/DtheRock"
+  },
+  "metadata": {
+    "description": "DAVE+R: a lifecycle for secure, abuse-resilient edge delivery, with a machine-executable gate spec, an MCP server, and an agent skill.",
+    "version": "1.2.0",
+    "pluginRoot": "."
+  },
+  "plugins": [
+    {
+      "name": "dave-r",
+      "source": ".",
+      "description": "Run the DAVE+R lifecycle for a security change: 63 machine-checkable gates, evidence typing, and a signature boundary no agent can cross.",
+      "version": "1.2.0",
+      "keywords": ["security", "waf", "edge", "bot-management", "governance", "compliance", "gates"]
+    }
+  ]
+}

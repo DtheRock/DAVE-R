@@ -4,6 +4,11 @@
 
 ## Install
 
+The plugin at the repo root ([`.claude-plugin/`](../../.claude-plugin/), see
+[`ai/INSTALL.md`](../INSTALL.md) §2) wires this server up automatically, picking a
+`python3` with the right packages at launch time via `ai/mcp/launch.py`. What follows is
+for wiring it up by hand instead.
+
 ```bash
 pip install pyyaml "mcp<2" jsonschema referencing
 ```
