@@ -55,15 +55,17 @@ gates:
     name: guardrails-are-numeric
     severity: blocking
     rationale: >
-      Prose guardrails are unenforceable. A tolerance of exactly zero is also rejected:
-      no statistical control can guarantee it, so declaring it guarantees a later argument
-      instead of a later measurement.
+      Prose guardrails are unenforceable. A tolerance or budget of exactly zero is also
+      rejected, for both guardrails: no statistical control can guarantee zero false
+      positives, and no real system has zero added latency, so declaring either
+      guarantees a later argument instead of a later measurement.
     assert:
       all:
         - exists: definition_brief.guardrails.false_positive_tolerance
         - exists: definition_brief.guardrails.latency_budget_ms
         - gt: [definition_brief.guardrails.false_positive_tolerance, 0]
-    remediation: Declare a false positive budget as a fraction (e.g. 0.001) and a latency budget in ms at a stated percentile.
+        - gt: [definition_brief.guardrails.latency_budget_ms, 0]
+    remediation: Declare a false positive budget as a fraction (e.g. 0.001) and a latency budget in ms, greater than zero, at a stated percentile.
 
   - id: D-4
     name: metrics-have-baselines

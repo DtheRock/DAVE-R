@@ -6,7 +6,10 @@ without duplicating it.
 """
 from __future__ import annotations
 
+import json
 import re
+import subprocess
+import sys
 from dataclasses import dataclass
 from typing import Any
 
@@ -28,6 +31,68 @@ VACUOUS = Result(True, vacuous=True)
 
 # Upper bound on the string handed to re.search. See the matches operator.
 MAX_MATCH_SUBJECT = 4096
+
+# Wall-clock budget for a single re.search call. This is the real ReDoS guard;
+# MAX_MATCH_SUBJECT only bounds a huge but well-behaved input, and does nothing
+# for a catastrophically-backtracking pattern - measured hanging at ~25-30
+# characters, five orders of magnitude under that cap. One second is generous
+# for any legitimate adapter-authored pattern against a <=4096-char subject and
+# short enough that a pathological one fails the gate instead of hanging the run.
+MATCH_TIMEOUT_SECONDS = 1.0
+
+
+# The worker run in a subprocess for _search_with_timeout. Stdlib-only (json,
+# re, sys) so it needs no path setup; pattern/subject arrive via stdin as JSON
+# to avoid any shell-quoting or argv-length concerns with adversarial input.
+_MATCH_WORKER_SRC = (
+    "import json, re, sys\n"
+    "d = json.loads(sys.stdin.read())\n"
+    "try:\n"
+    "    m = re.search(d['pattern'], d['subject'])\n"
+    "    sys.stdout.write(json.dumps({'ok': True, 'matched': bool(m)}))\n"
+    "except Exception as e:\n"
+    "    sys.stdout.write(json.dumps({'ok': False, 'error': str(e)}))\n"
+)
+
+
+def _search_with_timeout(pattern: str, subject: str, timeout: float):
+    """Run re.search in a worker subprocess with a wall-clock budget.
+
+    This used to run on a `threading.Thread` and reclaim control via
+    `Thread.join(timeout)`. That does not work: CPython's `_sre` extension
+    holds the GIL for the entire duration of a single `re.search` call and
+    never checks back in until the match returns, so the *caller's* thread
+    cannot resume running Python bytecode at the timeout boundary either - it
+    is starved right alongside the runaway match. Measured on a ~26-character
+    adversarial input against a 1.0s budget: 7+ seconds wall-clock, not 1,
+    and unbounded beyond that as the input grows. A subprocess has no such
+    coupling: `subprocess.run(..., timeout=timeout)` SIGKILLs the child at
+    the deadline regardless of what it is doing internally (backtracking is
+    still consuming CPU, but in a process the OS can and does kill on
+    schedule), which is what makes this a genuine hard bound instead of a
+    cooperative one. The `regex` third-party module's own `timeout=` kwarg
+    was also tried and rejected: it returned promptly for one pathological
+    pattern but hung past a 30s shell timeout on a second one, so it is not
+    a reliable guarantee either.
+
+    Returns ("ok", matched_bool), ("timeout", None), or ("error", exception).
+    """
+    try:
+        proc = subprocess.run(
+            [sys.executable, "-S", "-c", _MATCH_WORKER_SRC],
+            input=json.dumps({"pattern": pattern, "subject": subject}),
+            capture_output=True, text=True, timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        return "timeout", None
+    try:
+        out = json.loads(proc.stdout)
+    except (json.JSONDecodeError, ValueError):
+        return "error", RuntimeError(
+            (proc.stderr or "match worker produced no parseable output")[:300])
+    if not out.get("ok"):
+        return "error", re.error(out.get("error", "invalid pattern"))
+    return "ok", out.get("matched")
 
 
 def _fail(msg: str) -> Result:
@@ -225,11 +290,20 @@ def evaluate(expr: Any, ctx: Context) -> Result:
         v = ctx.resolve(ref)
         if not isinstance(v, str):
             return _fail(f"{ref} is not a string")
-        # Python's re has no timeout and adapter patterns are third-party. Cap the
-        # subject so a catastrophically-backtracking pattern cannot hang the run.
+        # Adapter patterns are third-party. Two independent guards: cap the subject
+        # against a huge but well-behaved input, and bound wall-clock time against a
+        # catastrophically-backtracking pattern - the cap alone does nothing for that
+        # shape, since the blow-up is exponential in the match, not the input size.
         subject = v[:MAX_MATCH_SUBJECT]
-        return OK if re.search(pattern, subject) else _fail(
-            f"{ref} ('{subject[:60]}') does not match /{pattern}/")
+        status, res = _search_with_timeout(pattern, subject, MATCH_TIMEOUT_SECONDS)
+        if status == "timeout":
+            return _fail(
+                f"{ref} ('{subject[:60]}') did not match or fail against /{pattern}/ within "
+                f"{MATCH_TIMEOUT_SECONDS}s; treating as failed rather than hanging the run "
+                f"(the pattern may be catastrophically backtracking)")
+        if status == "error":
+            raise res
+        return OK if res else _fail(f"{ref} ('{subject[:60]}') does not match /{pattern}/")
 
     # --- evidence typing (the spec's central rule) ---------------------------
     if op == "provenance_in":

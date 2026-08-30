@@ -11,12 +11,13 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 
 import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from daver import Spec, integrity, load_cycle, resolvers  # noqa: E402
-from daver.expr import MAX_MATCH_SUBJECT, evaluate  # noqa: E402
+from daver.expr import MATCH_TIMEOUT_SECONDS, MAX_MATCH_SUBJECT, evaluate  # noqa: E402
 from daver.model import Context  # noqa: E402
 
 FIX = os.path.join(os.path.dirname(__file__), "fixtures")
@@ -314,3 +315,198 @@ def test_mcp_server_refuses_to_start_without_explicit_workspace(tmp_path):
                             capture_output=True, text=True, timeout=15)
     assert result.returncode != 0, "server started with no explicit DAVER_WORKSPACE"
     assert "DAVER_WORKSPACE" in result.stderr
+
+
+# =============================================================================
+# Full audit, 2026-08-30 (dave-r-full-audit.md) - 8 findings, one section each.
+# Finding 8 (exec-resolver argv allowlist comments overstating the safety
+# boundary) has no test here: it changed only docstrings/comments, no
+# behavior, and there is nothing computable to regress-test in prose.
+# =============================================================================
+
+# --- Finding 1 (High): X-1/X-2/X-3 must fire no later than validate --------
+
+def test_x_gates_evaluate_no_later_than_validate(ref_cycle):
+    """integrity.yaml declared `stage: execute` at the file level, so X-1
+    (audit chain), X-2 (signature verification) and X-3 (source
+    re-verification) were all bucketed into execute even though V-11's
+    go/no-go decision is a Validate-stage gate. An operator checking
+    `--stage validate` got a clean structural pass on the signature fields
+    without X-2 ever running the real cryptographic check."""
+    ids_at_validate = {r.id for r in Spec().run(ref_cycle, stage="validate").results}
+    assert {"X-1", "X-2", "X-3"} <= ids_at_validate
+
+
+def test_x_gates_fire_on_the_cli_default_stage_too(ref_cycle):
+    """No --stage flag means the CLI reads the cycle document's own `stage:`
+    field - written by the agent, not a fixed default. That path must pick up
+    the X-gates identically, or the fix only covers the flag nobody was told
+    to pass."""
+    cycle = copy.deepcopy(ref_cycle)
+    cycle["stage"] = "validate"
+    ids = {r.id for r in Spec().run(cycle).results}
+    assert {"X-1", "X-2", "X-3"} <= ids
+
+
+# --- Finding 2 (Medium): D-3 must check latency_budget_ms's sign too -------
+
+@pytest.mark.parametrize("bad_value", [0, -50])
+def test_d3_rejects_a_non_positive_latency_budget(ref_cycle, bad_value):
+    """D-3 already refused a zero-or-negative false_positive_tolerance because
+    a declared-zero guardrail is a hollow guarantee no statistical control can
+    honor. latency_budget_ms is the exact same shape of guardrail and was only
+    checked for existence, not sign - 0 and -50 both silently passed."""
+    cycle = copy.deepcopy(ref_cycle)
+    cycle["definition_brief"]["guardrails"]["latency_budget_ms"]["value"] = bad_value
+    d3 = next(r for r in Spec().run(cycle, stage="define").results if r.id == "D-3")
+    assert not d3.passed
+
+
+def test_d3_still_passes_a_real_positive_latency_budget(ref_cycle):
+    d3 = next(r for r in Spec().run(ref_cycle, stage="define").results if r.id == "D-3")
+    assert d3.passed
+
+
+# --- Finding 3 (Medium): omitting --evidence-root must not disable F-1 -----
+
+def test_omitted_workspace_defaults_to_cwd_not_to_skipping_the_check(tmp_path, monkeypatch):
+    """--evidence-root has no argparse default, so omitting it left
+    workspace=None all the way down to resolve_trust_anchor - which treated
+    None as "skip the containment check" rather than "not told, so assume
+    cwd", unlike resolvers.evidence_root()'s own self-healing default. Same
+    anchor, same file, used to flip from refused to trusted purely because a
+    flag was left off the command line."""
+    monkeypatch.chdir(tmp_path)
+    anchor = tmp_path / "allowed_signers"
+    anchor.write_text("attacker@evil ssh-ed25519 AAAAfake\n")
+    path, why = integrity.resolve_trust_anchor(str(anchor), workspace=None)
+    assert path is None and "inside the audited workspace" in why
+
+
+def test_omitted_workspace_still_trusts_a_genuinely_outside_anchor(tmp_path, monkeypatch):
+    """The default must be a real default, not a blanket refusal: an anchor
+    that is genuinely outside the (defaulted-to-cwd) workspace still
+    resolves normally."""
+    workdir = tmp_path / "workspace"; workdir.mkdir()
+    operator_space = tmp_path / "operator"; operator_space.mkdir()
+    monkeypatch.chdir(workdir)
+    anchor = operator_space / "allowed_signers"
+    anchor.write_text("owner@acme.example ssh-ed25519 AAAAfake\n")
+    path, _ = integrity.resolve_trust_anchor(str(anchor), workspace=None)
+    assert path == str(anchor)
+
+
+# --- Finding 4 (Low-Medium): matches must bound wall-clock time, not length -
+
+def test_matches_bounds_wall_clock_time_against_catastrophic_backtracking():
+    """MAX_MATCH_SUBJECT only bounds a huge but well-behaved input; it does
+    nothing for a pattern whose cost is exponential in the match rather than
+    the input size. `(a+)+$` against a non-matching subject measured
+    0.03s/0.43s/6.90s at 18/22/26 characters - a ~30-40 character
+    adapter-authored pattern could hang the run indefinitely. A worker
+    subprocess with subprocess.run's own `timeout=` gives a genuine
+    OS-enforced bound regardless of input length; a thread does not, because
+    CPython's `re` holds the GIL for the whole match and a
+    `Thread.join(timeout)` cannot reclaim control either - measured 7+
+    seconds against a 1.0s budget when tried."""
+    cycle = {"module": {"s": "a" * 40 + "!"}}
+    t0 = time.perf_counter()
+    r = evaluate({"matches": ["module.s", "(a+)+$"]}, Context(cycle=cycle))
+    elapsed = time.perf_counter() - t0
+    assert not r.ok
+    assert elapsed < MATCH_TIMEOUT_SECONDS + 1.5, (
+        f"took {elapsed:.2f}s; a catastrophic pattern must be bounded near "
+        f"{MATCH_TIMEOUT_SECONDS}s regardless of input length")
+
+
+def test_matches_still_matches_normally():
+    assert evaluate({"matches": ["module.s", "^[a-z]+$"]}, Context(cycle={"module": {"s": "hello"}})).ok
+    assert not evaluate({"matches": ["module.s", "^[a-z]+$"]}, Context(cycle={"module": {"s": "HELLO"}})).ok
+
+
+# --- Finding 5 (Low): lint() must catch capitalized dangling references ----
+
+def test_lint_catches_a_capitalized_dangling_reference():
+    """_unresolvable_refs used to skip any ref whose root wasn't all-lowercase,
+    to dodge false positives on enum-like literals - which meant a root
+    mistyped with a capital letter (Definition_brief instead of
+    definition_brief) escaped detection entirely and became a silent runtime
+    string literal, exactly the failure mode this check exists to catch."""
+    s = Spec()
+    assert s._unresolvable_refs({"assert": {"exists": "Definition_brief.asset.target"}})
+
+
+def test_lint_still_ignores_non_reference_strings():
+    """Enum values and prose must not become false positives just because the
+    case-sensitivity blind spot closed."""
+    s = Spec()
+    assert not s._unresolvable_refs({"assert": {"in": ["module.x", ["LOW", "HIGH"]]}})
+    assert not s._unresolvable_refs({"assert": {"matches": ["module.x", "an Execution. of the plan"]}})
+
+
+# --- Finding 6 (Low): adapter gate stage-inference must be structural ------
+
+def test_adapter_stage_inference_ignores_an_incidental_substring():
+    """_adapter_gate_stage used to yaml.safe_dump the gate's assert block and
+    substring-search it for artifact names like 'execution' or 'audit' -
+    matching even inside an unrelated regex pattern or prose string, not just
+    a real reference, and silently filing the gate under the wrong stage."""
+    g = {"id": "T-1", "assert": {"matches": ["module.x", "an execution. of the plan"]}}
+    assert Spec._adapter_gate_stage(g) == "define"
+
+
+def test_adapter_stage_inference_still_detects_real_references():
+    assert Spec._adapter_gate_stage(
+        {"id": "T-2", "assert": {"exists": "execution.enforcement_authorization"}}) == "execute"
+    assert Spec._adapter_gate_stage(
+        {"id": "T-3", "assert": {"exists": "validation_plan.go_no_go"}}) == "validate"
+
+
+def test_adapter_stage_inference_explicit_stage_still_wins():
+    assert Spec._adapter_gate_stage({"id": "T-4", "stage": "refine", "assert": {}}) == "refine"
+
+
+# --- Finding 7 (Low): schemas must reject undeclared keys ------------------
+
+def _cycle_schema_validator():
+    """Build a Draft202012Validator for cycle.schema.json from the shipped
+    schemas. jsonschema/referencing are optional (ai/mcp/requirements.txt, not
+    the core engine's ai/requirements-ci.txt), so this skips where they aren't
+    installed - same as the rest of the MCP-adjacent surface. Importing the
+    specific names, not just the packages: an old system-wide jsonschema can be
+    present but predate Draft202012Validator, which imports fine at the package
+    level and then fails on the class - importorskip alone would not catch that."""
+    try:
+        from jsonschema import Draft202012Validator
+        from referencing import Registry, Resource
+    except ImportError as e:
+        pytest.skip(f"jsonschema/referencing with Draft202012Validator support not available: {e}")
+
+    sdir = os.path.join(os.path.dirname(__file__), "..", "..", "spec", "schemas")
+    registry = Registry()
+    for fn in os.listdir(sdir):
+        if fn.endswith(".json"):
+            with open(os.path.join(sdir, fn)) as fh:
+                registry = registry.with_resource(fn, Resource.from_contents(json.load(fh)))
+    with open(os.path.join(sdir, "cycle.schema.json")) as fh:
+        cyc_schema = json.load(fh)
+    return Draft202012Validator(cyc_schema, registry=registry)
+
+
+def test_schemas_still_validate_the_real_reference_cycle(ref_cycle):
+    """5 of 8 schemas didn't set additionalProperties: false; the fix must not
+    make the schema stricter than the real documents it's supposed to accept."""
+    validator = _cycle_schema_validator()
+    errs = list(validator.iter_errors(ref_cycle))
+    assert not errs, [e.message for e in errs[:3]]
+
+
+def test_schemas_reject_a_typo_d_key(ref_cycle):
+    """adapter/common/definition-brief/exception-register/refinement-log all
+    allowed undeclared extra fields, so a typo'd key (provenence instead of
+    provenance, say) silently passed schema validation."""
+    validator = _cycle_schema_validator()
+    typo_cycle = copy.deepcopy(ref_cycle)
+    typo_cycle["definition_brief"]["raci"]["accountable"]["provenence_typo"] = "oops"
+    assert list(validator.iter_errors(typo_cycle)), \
+        "a typo'd/undeclared key should now be rejected by additionalProperties: false"

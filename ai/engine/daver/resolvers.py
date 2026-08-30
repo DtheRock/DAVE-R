@@ -24,6 +24,17 @@ ATTACKER-CONTROLLED. Three rules follow:
 Even with exec enabled, argv[0] is allowlisted against interpreters: an argv list
 whose first element is a shell is a shell, so ["/bin/sh","-c",...] is not a
 mitigation over a shell string.
+
+That allowlist is one layer, not the safety boundary. It stops the disguised-shell
+trick above; it cannot and does not vet .daver/resolvers.json pointing argv[0] at
+some OTHER arbitrary script or binary planted in the same workspace - under this
+module's own threat model, that config travels beside the document and is exactly
+as attacker-controlled as the document itself. No allowlist of names can close
+that, because the attacker chooses the name. The actual safety property is rule 1
+above: exec is off unless an operator explicitly opts in, and doing so prints a
+warning naming the trust decision being made. Enabling it means trusting every
+script and binary reachable from .daver/resolvers.json in that workspace, not
+just that none of them is literally named "bash".
 """
 from __future__ import annotations
 
@@ -180,8 +191,10 @@ def _exec_resolver(source: dict, root: str) -> Resolution:
     """Runs a named command from .daver/resolvers.json under the evidence root.
 
     The cycle document supplies a KEY, never a command, and the command it names
-    must still survive the argv allowlist. Only reachable when the operator has
-    explicitly enabled exec resolvers.
+    must still pass _reject_argv - which catches a shell disguised as an argv
+    list, not an arbitrary attacker-planted binary named by a legitimate-looking
+    argv[0]. Only reachable when the operator has explicitly enabled exec
+    resolvers, which is the actual trust decision; see the module docstring.
     """
     try:
         cfg_path = _confine(root, os.path.join(".daver", "resolvers.json"))

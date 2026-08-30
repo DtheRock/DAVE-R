@@ -246,7 +246,7 @@ value. See `ai/engine/daver/resolvers.py`; `file` is about thirty lines.
 ```bash
 python3 ai/engine/daver_cli.py lint                                    # spec self-check
 python3 ai/engine/daver_cli.py check ai/engine/tests/fixtures/reference.cycle.yaml --stage refine
-pip install pytest && python3 -m pytest ai/engine/tests -q             # 123 tests
+pip install pytest && python3 -m pytest ai/engine/tests -q             # 146 tests
 bash ai/examples/signing/demo.sh                                       # needs ssh-keygen
 ```
 
