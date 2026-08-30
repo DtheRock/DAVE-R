@@ -10,6 +10,7 @@
       "type": "object",
       "description": "An evidence-typed value. See spec/evidence.md (normative).",
       "required": ["provenance"],
+      "additionalProperties": false,
       "properties": {
         "value": {},
         "unit": { "type": "string" },
@@ -35,6 +36,7 @@
       "type": "object",
       "description": "A resolvable pointer to where an observation came from.",
       "required": ["system", "ref"],
+      "additionalProperties": false,
       "properties": {
         "system": { "type": "string", "examples": ["datadog", "splunk", "cloudflare", "terraform", "github", "okta"] },
         "ref": { "type": "string", "description": "Query, dashboard id, file path, or API path. Must be re-runnable." },
@@ -44,6 +46,7 @@
     "human": {
       "type": "object",
       "required": ["name", "identity"],
+      "additionalProperties": false,
       "properties": {
         "name": { "type": "string" },
         "identity": { "type": "string", "description": "Email, SSO subject, or handle. Must resolve to one person, not a team." },
@@ -54,6 +57,7 @@
       "type": "object",
       "description": "A human decision an agent may never author.",
       "required": ["decision", "by", "at"],
+      "additionalProperties": false,
       "properties": {
         "decision": { "enum": ["approved", "rejected", "deferred"] },
         "by": { "$ref": "#/$defs/human" },

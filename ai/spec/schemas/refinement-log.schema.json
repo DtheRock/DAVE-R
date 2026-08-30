@@ -4,12 +4,14 @@
   "title": "DAVE+R Refinement Log",
   "type": "object",
   "required": ["entries"],
+  "additionalProperties": false,
   "properties": {
     "entries": {
       "type": "array",
       "items": {
         "type": "object",
         "required": ["date", "version", "change", "evidence", "impact"],
+        "additionalProperties": false,
         "properties": {
           "date": { "type": "string", "format": "date" },
           "version": { "type": "string", "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+$" },
@@ -28,6 +30,7 @@
     "complexity_trend": {
       "type": "object",
       "description": "Gate R-5. The framework claims the system should get simpler over time. That is only checkable if you count.",
+      "additionalProperties": false,
       "properties": {
         "control_count": { "$ref": "common.schema.json#/$defs/value" },
         "exception_count": { "$ref": "common.schema.json#/$defs/value" },
@@ -39,6 +42,7 @@
     "drift_check": {
       "type": "object",
       "description": "Gate R-6. Re-run evasion analysis on cadence. If the same threshold has been ratcheted more than twice, the control class is losing and should be escalated rather than tuned again.",
+      "additionalProperties": false,
       "properties": {
         "last_run": { "type": "string", "format": "date" },
         "threshold_adjustments_count": { "$ref": "common.schema.json#/$defs/value" },

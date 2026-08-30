@@ -104,12 +104,17 @@ def resolve_trust_anchor(explicit: str | None = None,
     inside the workspace is refused rather than trusted. Public keys are not
     secrets: the right pattern is to commit your own allowed_signers to your own
     repository and verify against that.
+
+    workspace=None does NOT mean "skip the containment check" - it means the
+    caller didn't say, so this defaults to the current directory, the same
+    self-healing fallback resolvers.evidence_root() already uses for the file
+    resolver's own boundary. A caller that genuinely wants no containment has no
+    way to ask for that here, on purpose: the whole point of this function is
+    that the check cannot be silently switched off by omitting a flag.
     """
-    ws = os.path.realpath(workspace) if workspace else None
+    ws = os.path.realpath(workspace) if workspace else os.path.realpath(os.getcwd())
 
     def inside_workspace(path: str) -> bool:
-        if not ws:
-            return False
         rp = os.path.realpath(path)
         return rp == ws or rp.startswith(ws + os.sep)
 

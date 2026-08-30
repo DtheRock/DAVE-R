@@ -4,6 +4,7 @@
   "title": "DAVE+R Definition Brief",
   "type": "object",
   "required": ["name", "status", "asset", "threat_scenarios", "guardrails", "success_metrics", "non_goals", "raci", "triage", "alternatives_considered"],
+  "additionalProperties": false,
   "properties": {
     "name": { "type": "string" },
     "date": { "type": "string", "format": "date" },
@@ -12,6 +13,7 @@
     "asset": {
       "type": "object",
       "required": ["target", "traffic_scope", "critical_flows"],
+      "additionalProperties": false,
       "properties": {
         "target": { "type": "string", "description": "Concrete. A host, path, API, or resource id." },
         "traffic_scope": { "type": "string" },
@@ -20,6 +22,7 @@
           "description": "Flows that must not break. Enumerated here so Validate can test them explicitly.",
           "items": {
             "type": "object", "required": ["id", "description"],
+            "additionalProperties": false,
             "properties": {
               "id": { "type": "string" },
               "description": { "type": "string" },
@@ -36,6 +39,7 @@
       "items": {
         "type": "object",
         "required": ["id", "behaviour", "observable_signature"],
+        "additionalProperties": false,
         "properties": {
           "id": { "type": "string", "pattern": "^THR-[0-9]{3}$" },
           "behaviour": { "type": "string" },
@@ -53,6 +57,7 @@
       "type": "object",
       "description": "What must not break, with numbers. Prose guardrails are unenforceable.",
       "required": ["false_positive_tolerance", "latency_budget_ms"],
+      "additionalProperties": false,
       "properties": {
         "false_positive_tolerance": {
           "allOf": [{ "$ref": "common.schema.json#/$defs/value" }],
@@ -64,6 +69,7 @@
           "type": "array",
           "items": {
             "type": "object", "required": ["statement", "measured_by"],
+            "additionalProperties": false,
             "properties": {
               "statement": { "type": "string" },
               "measured_by": { "$ref": "common.schema.json#/$defs/source" }
@@ -78,6 +84,7 @@
       "items": {
         "type": "object",
         "required": ["id", "statement", "baseline", "target"],
+        "additionalProperties": false,
         "properties": {
           "id": { "type": "string" },
           "statement": { "type": "string" },
@@ -97,6 +104,7 @@
       "type": "object",
       "description": "Added in spec 1.0.0. Closes the gap where the lifecycle had no path for an attack already causing damage.",
       "required": ["track", "justification", "harm_accruing"],
+      "additionalProperties": false,
       "properties": {
         "track": { "$ref": "common.schema.json#/$defs/triage_track" },
         "justification": { "$ref": "common.schema.json#/$defs/value" },
@@ -118,6 +126,7 @@
       "items": {
         "type": "object",
         "required": ["option", "plane", "rejected_because"],
+        "additionalProperties": false,
         "properties": {
           "option": { "type": "string", "examples": ["Cache the endpoint at edge", "Require authentication", "Per-key quota at API gateway"] },
           "plane": { "$ref": "common.schema.json#/$defs/plane" },
@@ -130,6 +139,7 @@
     "raci": {
       "type": "object",
       "required": ["accountable", "responsible"],
+      "additionalProperties": false,
       "properties": {
         "accountable": {
           "allOf": [{ "$ref": "common.schema.json#/$defs/human" }],

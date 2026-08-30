@@ -1,7 +1,15 @@
-stage: execute
+stage: validate
 description: >
   Integrity gates. These are the difference between an agent that is trusted to
   follow the rules and an agent whose compliance is verifiable.
+
+  Bucketed at validate, not execute: X-2's whole point is that the go/no-go
+  decision recorded in Validate (V-11) is cryptographically signed, not just
+  structurally present. A gate that verifies that signature one stage later, at
+  Execute, checks it after the decision it protects has normally already been
+  acted on. Cumulative checking means these still apply at Execute and Refine too
+  (X-2 also covers the enforcement-authorization subject, which only exists once
+  Execute is reached) - validate is the floor, not a ceiling.
 
   Advisory by default so existing cycles keep working. Promote them to blocking with
   the `regulated` profile, or any profile of your own. Any team running an agent

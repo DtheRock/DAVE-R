@@ -204,19 +204,43 @@ class Spec:
 
     @staticmethod
     def _adapter_gate_stage(g: dict) -> str:
-        """Adapter gates declare a stage, or infer it from the artifacts they read."""
+        """Adapter gates declare a stage, or infer it from the artifacts they
+        actually reference.
+
+        Walks real reference strings in the assert tree (the same ref shape
+        lint's _unresolvable_refs walks: dotted, no spaces, not a $-special)
+        rather than substring-searching the whole serialized YAML. The old
+        substring search matched "execution." or "audit" wherever they occurred
+        - including inside an unrelated regex pattern or string literal - and
+        could file a gate under the wrong stage without anyone noticing.
+        """
         if "stage" in g:
             return g["stage"]
-        blob = yaml.safe_dump(g.get("assert", {}))
+
+        roots: set[str] = set()
+
+        def walk(node):
+            if isinstance(node, dict):
+                for v in node.values():
+                    walk(v)
+            elif isinstance(node, list):
+                for v in node:
+                    walk(v)
+            elif isinstance(node, str):
+                if node.startswith("$") or "." not in node or " " in node:
+                    return
+                roots.add(node.split(".", 1)[0].split("[", 1)[0])
+
+        walk(g.get("assert", {}))
         for artifact, stage in (
-            ("execution.", "execute"),
-            ("refinement_log.", "refine"),
-            ("validation_plan.", "validate"),
-            ("exception_register.", "validate"),
-            ("control_matrix.", "architect"),
+            ("execution", "execute"),
+            ("refinement_log", "refine"),
+            ("validation_plan", "validate"),
+            ("exception_register", "validate"),
+            ("control_matrix", "architect"),
             ("audit", "execute"),
         ):
-            if artifact in blob:
+            if artifact in roots:
                 return stage
         return "define"
 
@@ -288,7 +312,14 @@ class Spec:
             head = ref.split(".", 1)[0].split("[", 1)[0]
             if not head or not head.replace("_", "").isalnum():
                 return
-            if head.islower() and head not in self._KNOWN_ROOTS:
+            # Previously only flagged an all-lowercase head, to dodge false positives
+            # on enum-like literals. That heuristic had a real blind spot: a root
+            # mistyped with a capital letter (Definition_brief.asset.target) isn't
+            # lowercase, so it skipped this check entirely and became a silent
+            # runtime string literal - exactly the failure mode this dry-run exists
+            # to catch, just for a typo shape it didn't check. Known roots are all
+            # lowercase by convention, so any case variant of one is still wrong.
+            if head not in self._KNOWN_ROOTS:
                 bad.append(ref)
 
         walk(g.get("assert"))
