@@ -1,6 +1,6 @@
 {
   "name": "dave-r",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "description": "Run the DAVE+R lifecycle for a security change: edge/WAF rules, cloud posture, bot and fraud defense, or any governed production guardrail. 63 machine-checkable gates across five stages, evidence typing that blocks a fabricated measurement, and a signature boundary no agent can cross to authorize its own enforcement. Bundles the agent skill and the MCP server; each works alone, and the skill prefers the MCP tools when both are present.",
   "author": {
     "name": "Demetrios Petropoulos"

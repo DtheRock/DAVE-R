@@ -6,6 +6,56 @@ own Versioning section.
 
 ---
 
+## [1.2.2] - 2026-08-30
+
+A fresh audit of the whole AI layer (engine, schemas, CLI, spec) found eight real gaps,
+from a High-severity one where the signature gate could evaluate a full stage after the
+decision it is meant to gate had already been acted on, down to a documentation nit. All
+eight are fixed here, each backed by a new regression test confirmed to fail on the
+prior code and pass on the fix.
+
+### Fixed
+
+- **X-1/X-2/X-3 evaluated a full stage too late (high).** `integrity.yaml` bucketed its
+  gates to `stage: execute` at the file level, so the cryptographic signature check
+  (X-2) never ran until after `validate` - the stage where the go/no-go decision (V-11)
+  is actually recorded - had already come and gone. Moved to `stage: validate`;
+  cumulative checking still covers `execute`/`refine`.
+- **D-3 checked one guardrail's sign but not the other's (medium).** `false_positive_tolerance`
+  was checked for `> 0`; `latency_budget_ms` was only checked for existence, so `0` or a
+  negative budget passed silently. Added the matching `gt` check.
+- **CLI's `--evidence-root` had no default, silently disabling the F-1 trust-anchor
+  check (medium).** `resolve_trust_anchor(workspace=None)` skipped the
+  inside-workspace containment check entirely when the flag was omitted, instead of
+  applying it against the working directory. Now defaults to `os.getcwd()`, matching
+  `resolvers.evidence_root()`'s own fallback.
+- **The `matches` operator's ReDoS guard bounded input length, not worst-case regex
+  complexity (low-medium).** A pathological pattern still ran unbounded past a few dozen
+  characters. `matches` now runs the match in a worker subprocess under a real
+  `subprocess.run(..., timeout=1.0)` - an OS-enforced bound, unlike the thread-and-join
+  or third-party `regex(timeout=...)` approaches tried and rejected first (both failed
+  to actually bound worst-case time under CPython's GIL).
+- **`lint()`'s dangling-reference check missed capitalized typos (low).** Only an
+  all-lowercase unresolvable root was flagged; `Definition_brief.foo` silently became a
+  runtime string literal instead of failing the build. Dropped the case restriction.
+- **`_adapter_gate_stage` inferred a gate's stage via a bare substring search (low).**
+  An incidental match inside a regex or prose string could misfile a gate's stage.
+  Replaced with a structural walk that only collects real reference-shaped strings.
+- **5 of 8 JSON schemas did not set `additionalProperties: false` (low).** Added to
+  every object-level schema with an explicit `properties` key across `adapter`,
+  `common`, `definition-brief`, `exception-register`, `refinement-log`; genuinely
+  open-ended fields (a gate's `assert` DSL blob) were left alone. A typo'd key is now
+  caught instead of silently ignored.
+- **Exec-resolver argv-allowlist comments overstated the safety boundary
+  (informational).** Docstrings in `resolvers.py` now say plainly that the allowlist is
+  one layer, not the boundary itself - it cannot vet an arbitrary attacker-planted
+  binary. No behavior change.
+
+Also: `ai/INSTALL.md` and `ai/README.md`'s test-count comments corrected from 123 to
+146 (16 new regression tests added for this round). 146 tests pass; spec lint clean;
+the reference cycle still `CAN ADVANCE` under `baseline` and still blocks on X-2 under
+`agent-operated` at `--stage refine`.
+
 ## [1.2.1] - 2026-08-29
 
 A live cycle got an accountable owner stuck: D-3 requires a numeric `latency_budget_ms`,
